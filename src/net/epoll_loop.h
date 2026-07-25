@@ -1,0 +1,45 @@
+#ifndef RTSP_SERVER_EPOLL_LOOP_H_
+#define RTSP_SERVER_EPOLL_LOOP_H_
+
+#include <sys/epoll.h>
+
+#include <atomic>
+#include <unordered_map>
+#include <vector>
+
+#include "event_loop.h"
+
+namespace rtsp_server
+{
+
+// EpollLoop - epoll 实现（Linux）
+class EpollLoop : public EventLoop
+{
+public:
+    EpollLoop();
+    ~EpollLoop() override;
+
+    // 禁止拷贝和移动
+    EpollLoop(const EpollLoop&) = delete;
+    EpollLoop& operator=(const EpollLoop&) = delete;
+    EpollLoop(EpollLoop&&) = delete;
+    EpollLoop& operator=(EpollLoop&&) = delete;
+
+    Status Init() override;
+    Status AddFd(int fd, EventType events, EventCallback callback) override;
+    Status ModifyFd(int fd, EventType events) override;
+    Status RemoveFd(int fd) override;
+    int Wait(int timeout_ms, std::vector<EventResult>& results) override;
+    void Run() override;
+    void Stop() override;
+
+private:
+    int epoll_fd_;
+    std::vector<struct ::epoll_event> events_;
+    std::unordered_map<int, EventCallback> callbacks_;
+    std::atomic<bool> running_;
+};
+
+}  // namespace rtsp_server
+
+#endif  // RTSP_SERVER_EPOLL_LOOP_H_
