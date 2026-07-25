@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-#include "../util/log.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
@@ -154,14 +154,7 @@ void RingBuffer::Consume(size_t size)
         size = readable_size_;
     }
 
-    if (size <= capacity_ - read_pos_)
-    {
-        read_pos_ += size;
-    }
-    else
-    {
-        read_pos_ = size - (capacity_ - read_pos_);
-    }
+    read_pos_ = (read_pos_ + size) % capacity_;
 
     readable_size_ -= size;
 }
@@ -174,14 +167,7 @@ void RingBuffer::Produce(size_t size)
         size = WritableSize();
     }
 
-    if (size <= capacity_ - write_pos_)
-    {
-        write_pos_ += size;
-    }
-    else
-    {
-        write_pos_ = size - (capacity_ - write_pos_);
-    }
+    write_pos_ = (write_pos_ + size) % capacity_;
 
     readable_size_ += size;
 }

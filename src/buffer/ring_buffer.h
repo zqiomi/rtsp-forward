@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <memory>
 
-#include "../util/status.h"
+#include "util/status.h"
 
 namespace rtsp_server
 {

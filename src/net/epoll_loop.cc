@@ -4,7 +4,8 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
-#include "../util/log.h"
+#include "util/constants.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
@@ -38,7 +39,7 @@ Status EpollLoop::Init()
         return Status::Error("epoll_create1 failed");
     }
 
-    events_.resize(64);
+    events_.resize(kEpollEventsSize);
     running_ = true;
     LOG_DEBUG("EpollLoop initialized, epoll_fd=%d", epoll_fd_);
     return Status::Ok();
@@ -57,15 +58,7 @@ Status EpollLoop::AddFd(int fd, EventType events, EventCallback callback)
     }
 
     struct ::epoll_event ev;
-    ev.events = 0;
-    if (static_cast<int>(events) & static_cast<int>(EventType::kRead))
-    {
-        ev.events |= EPOLLIN;
-    }
-    if (static_cast<int>(events) & static_cast<int>(EventType::kWrite))
-    {
-        ev.events |= EPOLLOUT;
-    }
+    ev.events = ToEpollEvents(events);
     ev.data.fd = fd;
 
     int ret = epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev);
@@ -93,15 +86,7 @@ Status EpollLoop::ModifyFd(int fd, EventType events)
     }
 
     struct ::epoll_event ev;
-    ev.events = 0;
-    if (static_cast<int>(events) & static_cast<int>(EventType::kRead))
-    {
-        ev.events |= EPOLLIN;
-    }
-    if (static_cast<int>(events) & static_cast<int>(EventType::kWrite))
-    {
-        ev.events |= EPOLLOUT;
-    }
+    ev.events = ToEpollEvents(events);
     ev.data.fd = fd;
 
     int ret = epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, fd, &ev);
@@ -173,6 +158,10 @@ int EpollLoop::Wait(int timeout_ms, std::vector<EventResult>& results)
         {
             result.events |= static_cast<int>(EventType::kWrite);
         }
+        if (events_[i].events & (EPOLLERR | EPOLLHUP))
+        {
+            result.events |= static_cast<int>(EventType::kError);
+        }
         results.push_back(result);
     }
 
@@ -194,7 +183,7 @@ void EpollLoop::Run()
     while (running_)
     {
         std::vector<EventResult> results;
-        int nfds = Wait(1000, results);
+        int nfds = Wait(kEpollWaitTimeoutMs, results);
         if (nfds < 0)
         {
             LOG_ERROR("EpollLoop::Run: wait failed");
@@ -219,6 +208,20 @@ void EpollLoop::Stop()
 {
     running_ = false;
     LOG_DEBUG("EpollLoop::Stop: stopping event loop");
+}
+
+uint32_t EpollLoop::ToEpollEvents(EventType events)
+{
+    uint32_t ev = 0;
+    if (static_cast<int>(events) & static_cast<int>(EventType::kRead))
+    {
+        ev |= EPOLLIN;
+    }
+    if (static_cast<int>(events) & static_cast<int>(EventType::kWrite))
+    {
+        ev |= EPOLLOUT;
+    }
+    return ev;
 }
 
 }  // namespace rtsp_server

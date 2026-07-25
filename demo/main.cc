@@ -1,8 +1,9 @@
-#include "../include/rtsp_server.h"
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
 #include <unistd.h>
+
+#include "rtsp_server.h"
 
 static void* g_server = NULL;
 
@@ -51,13 +52,14 @@ int main(int argc, char* argv[])
     }
 
     // 设置 SDP 内容
-    const char* sdp = "v=0\r\n"
-                      "o=- 0 0 IN IP4 0.0.0.0\r\n"
-                      "s=RTSP Stream\r\n"
-                      "c=IN IP4 0.0.0.0\r\n"
-                      "t=0 0\r\n"
-                      "m=video 0 RTP/AVP 96\r\n"
-                      "a=rtpmap:96 H264/90000\r\n";
+    const char* sdp =
+        "v=0\r\n"
+        "o=- 0 0 IN IP4 0.0.0.0\r\n"
+        "s=RTSP Stream\r\n"
+        "c=IN IP4 0.0.0.0\r\n"
+        "t=0 0\r\n"
+        "m=video 0 RTP/AVP 96\r\n"
+        "a=rtpmap:96 H264/90000\r\n";
     ret = rtsp_server_set_sdp(g_server, sdp);
     if (ret != RTSP_OK)
     {

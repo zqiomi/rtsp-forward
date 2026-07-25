@@ -8,7 +8,7 @@
 
 #include <cstring>
 
-#include "../util/log.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
@@ -180,8 +180,9 @@ int Socket::Accept(struct sockaddr_in* addr)
         return -1;
     }
 
-    socklen_t addr_len = sizeof(struct sockaddr_in);
-    int client_fd = accept(fd_, reinterpret_cast<struct sockaddr*>(addr), &addr_len);
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+    int client_fd = accept(fd_, reinterpret_cast<struct sockaddr*>(&client_addr), &addr_len);
     if (client_fd < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -192,9 +193,15 @@ int Socket::Accept(struct sockaddr_in* addr)
         return -1;
     }
 
+    // 如果调用者需要地址信息，则拷贝
+    if (addr != nullptr)
+    {
+        *addr = client_addr;
+    }
+
     char ip[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip));
-    LOG_DEBUG("Socket::Accept: client_fd=%d, ip=%s, port=%d", client_fd, ip, ntohs(addr->sin_port));
+    inet_ntop(AF_INET, &client_addr.sin_addr, ip, sizeof(ip));
+    LOG_DEBUG("Socket::Accept: client_fd=%d, ip=%s, port=%d", client_fd, ip, ntohs(client_addr.sin_port));
 
     return client_fd;
 }

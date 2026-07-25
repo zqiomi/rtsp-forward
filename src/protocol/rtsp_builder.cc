@@ -1,19 +1,19 @@
 #include "rtsp_builder.h"
 
-#include "../util/log.h"
+#include "util/constants.h"
 
 namespace rtsp_server
 {
 
 std::string RtspBuilder::BuildResponse(int status_code, const std::string& reason_phrase)
 {
-    return "RTSP/1.0 " + std::to_string(status_code) + " " + reason_phrase + "\r\n\r\n";
+    return std::string(kRtspVersion) + " " + std::to_string(status_code) + " " + reason_phrase + "\r\n\r\n";
 }
 
 std::string RtspBuilder::BuildResponse(int status_code, const std::string& reason_phrase,
                                        const std::map<std::string, std::string>& headers)
 {
-    std::string response = "RTSP/1.0 " + std::to_string(status_code) + " " + reason_phrase + "\r\n";
+    std::string response = std::string(kRtspVersion) + " " + std::to_string(status_code) + " " + reason_phrase + "\r\n";
 
     for (const auto& pair : headers)
     {
@@ -27,7 +27,7 @@ std::string RtspBuilder::BuildResponse(int status_code, const std::string& reaso
 std::string RtspBuilder::BuildResponse(int status_code, const std::string& reason_phrase,
                                        const std::map<std::string, std::string>& headers, const std::string& body)
 {
-    std::string response = "RTSP/1.0 " + std::to_string(status_code) + " " + reason_phrase + "\r\n";
+    std::string response = std::string(kRtspVersion) + " " + std::to_string(status_code) + " " + reason_phrase + "\r\n";
 
     for (const auto& pair : headers)
     {
@@ -42,7 +42,7 @@ std::string RtspBuilder::BuildOptionsResponse(int cseq, const std::string& sessi
 {
     std::map<std::string, std::string> headers;
     headers["CSeq"] = std::to_string(cseq);
-    headers["Public"] = "OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE, TEARDOWN, GET_PARAMETER, SET_PARAMETER";
+    headers["Public"] = kRtspOptionsMethods;
     if (!session_id.empty())
     {
         headers["Session"] = session_id;
@@ -55,7 +55,7 @@ std::string RtspBuilder::BuildDescribeResponse(int cseq, const std::string& sdp_
 {
     std::map<std::string, std::string> headers;
     headers["CSeq"] = std::to_string(cseq);
-    headers["Content-Type"] = "application/sdp";
+    headers["Content-Type"] = kContentTypeSdp;
     headers["Content-Length"] = std::to_string(sdp_content.size());
 
     return BuildResponse(200, "OK", headers, sdp_content);
@@ -79,7 +79,7 @@ std::string RtspBuilder::BuildPlayResponse(int cseq, const std::string& session_
 {
     std::map<std::string, std::string> headers;
     headers["CSeq"] = std::to_string(cseq);
-    headers["Range"] = "npt=0.000-";
+    headers["Range"] = kRtspPlayRange;
     if (!session_id.empty())
     {
         headers["Session"] = session_id;
@@ -88,43 +88,7 @@ std::string RtspBuilder::BuildPlayResponse(int cseq, const std::string& session_
     return BuildResponse(200, "OK", headers);
 }
 
-std::string RtspBuilder::BuildPauseResponse(int cseq, const std::string& session_id)
-{
-    std::map<std::string, std::string> headers;
-    headers["CSeq"] = std::to_string(cseq);
-    if (!session_id.empty())
-    {
-        headers["Session"] = session_id;
-    }
-
-    return BuildResponse(200, "OK", headers);
-}
-
-std::string RtspBuilder::BuildTeardownResponse(int cseq, const std::string& session_id)
-{
-    std::map<std::string, std::string> headers;
-    headers["CSeq"] = std::to_string(cseq);
-    if (!session_id.empty())
-    {
-        headers["Session"] = session_id;
-    }
-
-    return BuildResponse(200, "OK", headers);
-}
-
-std::string RtspBuilder::BuildGetParameterResponse(int cseq, const std::string& session_id)
-{
-    std::map<std::string, std::string> headers;
-    headers["CSeq"] = std::to_string(cseq);
-    if (!session_id.empty())
-    {
-        headers["Session"] = session_id;
-    }
-
-    return BuildResponse(200, "OK", headers);
-}
-
-std::string RtspBuilder::BuildSetParameterResponse(int cseq, const std::string& session_id)
+std::string RtspBuilder::BuildSimpleResponse(int cseq, const std::string& session_id)
 {
     std::map<std::string, std::string> headers;
     headers["CSeq"] = std::to_string(cseq);
@@ -141,7 +105,7 @@ std::string RtspBuilder::BuildErrorResponse(int cseq, int status_code, const std
     std::string reason = GetReasonPhrase(status_code);
     std::map<std::string, std::string> headers;
     headers["CSeq"] = std::to_string(cseq);
-    headers["Content-Type"] = "text/plain";
+    headers["Content-Type"] = kContentTypeText;
     headers["Content-Length"] = std::to_string(message.size());
 
     return BuildResponse(status_code, reason, headers, message);

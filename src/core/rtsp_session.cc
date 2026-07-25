@@ -1,10 +1,11 @@
 #include "rtsp_session.h"
 
-#include <iomanip>
-#include <random>
+#include <chrono>
+#include <cstdint>
 #include <sstream>
 
 #include "rtsp_server.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
@@ -91,17 +92,13 @@ Status RtspSession::HandleDescribe(const RtspRequest& request)
     url_ = request.url;
 
     // 从服务器获取 SDP 内容
-    std::string sdp = server_->GetSdp();
+    const std::string& sdp = server_->GetSdp();
     if (sdp.empty())
     {
-        // 如果未设置 SDP，返回默认内容
-        sdp =
-            "v=0\r\n"
-            "o=- 12345 12345 IN IP4 127.0.0.1\r\n"
-            "s=RTSP Session\r\n"
-            "t=0 0\r\n"
-            "m=video 0 RTP/AVP 96\r\n"
-            "a=rtpmap:96 H264/90000\r\n";
+        // SDP 未设置，返回错误
+        std::string response = builder_.BuildErrorResponse(request.cseq, 500, "SDP not configured");
+        conn_->Send(response.data(), response.size());
+        return Status::FailedPrecondition("SDP not configured");
     }
 
     std::string response = builder_.BuildDescribeResponse(request.cseq, sdp);
@@ -142,7 +139,7 @@ Status RtspSession::HandlePlay(const RtspRequest& request)
 Status RtspSession::HandleTeardown(const RtspRequest& request)
 {
     LOG_DEBUG("RtspSession::HandleTeardown");
-    std::string response = builder_.BuildTeardownResponse(request.cseq, session_id_);
+    std::string response = builder_.BuildSimpleResponse(request.cseq, session_id_);
     conn_->Send(response.data(), response.size());
     Close();
     return Status::Ok();
@@ -151,20 +148,22 @@ Status RtspSession::HandleTeardown(const RtspRequest& request)
 Status RtspSession::HandlePause(const RtspRequest& request)
 {
     LOG_DEBUG("RtspSession::HandlePause");
-    std::string response = builder_.BuildPauseResponse(request.cseq, session_id_);
+    std::string response = builder_.BuildSimpleResponse(request.cseq, session_id_);
     conn_->Send(response.data(), response.size());
+    state_ = RtspSessionState::kPaused;
     return Status::Ok();
 }
 
 std::string RtspSession::GenerateSessionId()
 {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint64_t> dis(0, UINT64_MAX);
-    uint64_t value = dis(gen);
+    // 时间戳 + 服务器实例内递增序列号
+    auto now = std::chrono::system_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+    uint64_t timestamp = static_cast<uint64_t>(ms.count());
+    uint64_t seq = server_->NextSessionSequence();
 
     std::stringstream ss;
-    ss << std::hex << std::setw(16) << std::setfill('0') << value;
+    ss << std::hex << timestamp << std::hex << seq;
     return ss.str();
 }
 

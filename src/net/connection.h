@@ -2,10 +2,10 @@
 #define RTSP_SERVER_CONNECTION_H_
 
 #include <memory>
+#include <mutex>
 #include <string>
 
-#include "../buffer/ring_buffer.h"
-#include "../util/status.h"
+#include "buffer/ring_buffer.h"
 
 namespace rtsp_server
 {
@@ -14,7 +14,6 @@ namespace rtsp_server
 class Connection
 {
 public:
-    Connection(int fd);
     Connection(int fd, size_t buffer_size);
     ~Connection();
 
@@ -52,6 +51,13 @@ public:
     // 是否可写
     bool IsWritable() const;
 
+    // 是否有数据需要刷新
+    bool NeedFlush()
+    {
+        std::lock_guard<std::mutex> lock(send_mutex_);
+        return write_buffer_->ReadableSize() > 0;
+    }
+
     // 关闭连接
     void Close();
 
@@ -66,6 +72,7 @@ private:
     bool closed_;
     std::unique_ptr<RingBuffer> read_buffer_;
     std::unique_ptr<RingBuffer> write_buffer_;
+    std::mutex send_mutex_;  // 保护 Send/Flush 的线程安全
 };
 
 }  // namespace rtsp_server

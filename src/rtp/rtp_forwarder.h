@@ -1,9 +1,9 @@
 #ifndef RTSP_SERVER_RTP_FORWARDER_H_
 #define RTSP_SERVER_RTP_FORWARDER_H_
 
-#include "../net/connection.h"
-#include "../util/status.h"
+#include "net/connection.h"
 #include "rtp_packet.h"
+#include "util/status.h"
 
 namespace rtsp_server
 {

@@ -4,7 +4,7 @@
 #include <map>
 #include <string>
 
-#include "../util/status.h"
+#include "util/constants.h"
 
 namespace rtsp_server
 {
@@ -40,22 +40,14 @@ public:
     std::string BuildDescribeResponse(int cseq, const std::string& sdp_content);
 
     // 构建 SETUP 响应
-    std::string BuildSetupResponse(int cseq, const std::string& session_id, int rtp_channel = 0, int rtcp_channel = 1);
+    std::string BuildSetupResponse(int cseq, const std::string& session_id, int rtp_channel = kDefaultRtpChannel,
+                                   int rtcp_channel = kDefaultRtcpChannel);
 
     // 构建 PLAY 响应
     std::string BuildPlayResponse(int cseq, const std::string& session_id);
 
-    // 构建 PAUSE 响应
-    std::string BuildPauseResponse(int cseq, const std::string& session_id);
-
-    // 构建 TEARDOWN 响应
-    std::string BuildTeardownResponse(int cseq, const std::string& session_id);
-
-    // 构建 GET_PARAMETER 响应
-    std::string BuildGetParameterResponse(int cseq, const std::string& session_id);
-
-    // 构建 SET_PARAMETER 响应
-    std::string BuildSetParameterResponse(int cseq, const std::string& session_id);
+    // 构建简单响应（用于 PAUSE/TEARDOWN/GET_PARAMETER/SET_PARAMETER）
+    std::string BuildSimpleResponse(int cseq, const std::string& session_id);
 
     // 构建错误响应
     std::string BuildErrorResponse(int cseq, int status_code, const std::string& message);

@@ -146,19 +146,29 @@ enum class RtspSessionState {
 | `rtsp_server_is_running()` | 检查运行状态 | server | 0/1 |
 | `rtsp_server_get_port()` | 获取端口 | server | 端口号 |
 
-### 2.4 线程安全策略（V1.0）
+### 2.4 线程安全策略
 
-**核心策略**：单线程模型，所有 API 必须在同一线程调用。
+**核心策略**：支持双线程模型，主线程运行事件循环处理 RTSP 信令，码流输入线程调用 RTP 转发接口。
+
+**线程安全实现**：
+
+1. **sessions_ 容器保护**：`RtspServer` 使用 `std::mutex sessions_mutex_` 保护会话容器的增删查。sessions_ 使用 `std::shared_ptr<RtspSession>` 管理会话生命周期，确保多线程访问时不会悬空。
+
+2. **BroadcastRtp 短暂持锁**：码流线程调用 `BroadcastRtp` 时，先短暂持锁拷贝需要转发的 session 列表（`shared_ptr` 引用计数 +1），释放锁后逐个转发，避免长时间持锁阻塞主线程。
+
+3. **Connection Send/Flush 保护**：每个 `Connection` 拥有独立的 `std::mutex send_mutex_`，保护 `Send` 和 `Flush` 操作，确保码流线程的 RTP 转发和主线程的 RTSP 响应不会同时写同一连接。
+
+4. **ProcessConnectionData/OnWrite 安全访问**：主线程处理连接数据时，短暂持锁获取 `shared_ptr<RtspSession>` 引用，释放锁后处理，避免与码流线程竞争。
 
 | API | 线程安全 | 说明 |
 | :--- | :--- | :--- |
-| `rtsp_server_create()` | 不安全 | 必须在poll线程调用 |
-| `rtsp_server_destroy()` | 不安全 | 必须在poll线程调用 |
-| `rtsp_server_start()` | 不安全 | 必须在poll线程调用 |
-| `rtsp_server_stop()` | 不安全 | 必须在poll线程调用 |
-| `rtsp_server_run()` | 不安全 | 阻塞调用，必须在poll线程调用 |
-| `rtsp_server_send_rtp()` | 不安全 | 必须在poll线程调用 |
-| `rtsp_server_set_sdp()` | 不安全 | 必须在poll线程调用 |
+| `rtsp_server_create()` | 安全 | 可在任意线程调用 |
+| `rtsp_server_destroy()` | 安全 | 确保没有其他线程在使用 server 后调用 |
+| `rtsp_server_start()` | 安全 | 必须在 Run 之前调用 |
+| `rtsp_server_stop()` | 安全 | 可在任意线程调用 |
+| `rtsp_server_run()` | 安全 | 阻塞调用，运行 epoll 事件循环 |
+| `rtsp_server_send_rtp()` | 安全 | 线程安全，可在码流输入线程调用 |
+| `rtsp_server_set_sdp()` | 安全 | 建议在 Start 之前调用 |
 
 ## 3. 网络工具层设计
 
@@ -610,13 +620,7 @@ make
 
 ## 10. 改进点规划
 
-### 10.1 线程安全支持（V1.2）
-
-- 在 `RtspServer` 中添加 `std::mutex` 保护 `sessions_`
-- 提供线程安全版本 API：`rtsp_server_send_rtp_thread_safe()`
-- 使用读写锁优化读多写少场景
-
-### 10.2 UDP 传输支持（V1.4）
+### 10.1 UDP 传输支持（V1.2）
 
 - 在 `RtspSession` 中添加 UDP socket 管理
 - 在 `RtspParser` 中解析 Transport 头的 client_port
@@ -628,16 +632,15 @@ make
 - 在 `Connection` 中支持 TLS 握手
 - 在 API 中添加证书路径配置
 
-### 10.4 版本规划
+### 10.3 版本规划
 
 | 版本 | 功能 | 状态 |
 | :--- | :--- | :--- |
-| V1.0 | 基础功能：RTSP协议处理、RTP透传(TCP)、C API、单线程、SDP动态更新、配置结构体、最大会话数限制 | 开发中 |
+| V1.0 | 基础功能：RTSP协议处理、RTP透传(TCP)、C API、双线程模型、SDP动态更新、配置结构体、最大会话数限制 | 开发中 |
 | V1.1 | 统计信息、超时机制 | 规划中 |
-| V1.2 | 线程安全支持 | 规划中 |
+| V1.2 | UDP传输支持 | 规划中 |
 | V1.3 | 错误处理优化、日志级别控制 | 规划中 |
-| V1.4 | UDP传输支持 | 规划中 |
-| V1.5 | TLS支持 | 规划中 |
+| V1.4 | TLS支持 | 规划中 |
 
 ## 11. 设计变更记录
 

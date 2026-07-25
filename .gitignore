@@ -51,3 +51,4 @@ Makefile
 # Generated files
 compile_commands.json
 demo/.cache
+off

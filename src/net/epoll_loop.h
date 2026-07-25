@@ -4,6 +4,7 @@
 #include <sys/epoll.h>
 
 #include <atomic>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
@@ -34,6 +35,9 @@ public:
     void Stop() override;
 
 private:
+    // 将 EventType 转换为 epoll events
+    static uint32_t ToEpollEvents(EventType events);
+
     int epoll_fd_;
     std::vector<struct ::epoll_event> events_;
     std::unordered_map<int, EventCallback> callbacks_;

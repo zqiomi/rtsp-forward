@@ -1,9 +1,9 @@
 #include "log.h"
 
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
-#include <cstdarg>
 
 namespace rtsp_server
 {
@@ -56,9 +56,12 @@ void Logger::Log(LogLevel level, const char* file, const char* func, int line, c
 
     // 获取文件名（只取最后一部分）
     const char* filename = strrchr(file, '/');
-    if (filename) {
+    if (filename)
+    {
         filename++;
-    } else {
+    }
+    else
+    {
         filename = file;
     }
 

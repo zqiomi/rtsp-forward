@@ -1,16 +1,16 @@
 #ifndef RTSP_SERVER_RTSP_SERVER_H_
 #define RTSP_SERVER_RTSP_SERVER_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 
-#include "../net/epoll_loop.h"
-#include "../net/event_loop.h"
-#include "../net/listener.h"
-#include "../rtp/rtp_packet.h"
-#include "../util/log.h"
-#include "../util/status.h"
+#include "net/epoll_loop.h"
+#include "net/listener.h"
+#include "rtp/rtp_packet.h"
+#include "util/status.h"
 
 namespace rtsp_server
 {
@@ -24,11 +24,12 @@ public:
     /**
      * @brief 构造函数
      *
-     * @param port 监听端口，默认554
-     * @param max_sessions 最大并发会话数，默认10
-     * @param buffer_size 每个连接的缓冲区大小，默认65536
+     * @param ip 监听地址
+     * @param port 监听端口
+     * @param max_sessions 最大并发会话数
+     * @param buffer_size 每个连接的缓冲区大小
      */
-    RtspServer(int port = 554, int max_sessions = 10, size_t buffer_size = 65536);
+    RtspServer(const std::string& ip, int port, int max_sessions, size_t buffer_size);
     ~RtspServer();
 
     // 禁止拷贝和移动
@@ -112,8 +113,9 @@ public:
      *
      * @return size_t 活跃会话数
      */
-    size_t GetActiveSessions() const
+    size_t GetActiveSessions()
     {
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
         return sessions_.size();
     }
 
@@ -135,6 +137,16 @@ public:
     size_t buffer_size() const
     {
         return buffer_size_;
+    }
+
+    /**
+     * @brief 获取下一个会话序列号
+     *
+     * @return uint64_t 递增的序列号
+     */
+    uint64_t NextSessionSequence()
+    {
+        return session_sequence_++;
     }
 
 private:
@@ -162,9 +174,11 @@ private:
     size_t buffer_size_;
     std::string sdp_;
     std::string ip_;
+    uint64_t session_sequence_;
     EpollLoop event_loop_;
     Listener listener_;
-    std::map<int, std::unique_ptr<RtspSession>> sessions_;
+    std::map<int, std::shared_ptr<RtspSession>> sessions_;
+    std::mutex sessions_mutex_;  // 保护 sessions_ 容器的线程安全
 };
 
 }  // namespace rtsp_server

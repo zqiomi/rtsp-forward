@@ -1,15 +1,13 @@
 #ifndef RTSP_SERVER_RTSP_SESSION_H_
 #define RTSP_SERVER_RTSP_SESSION_H_
 
-#include <memory>
 #include <string>
 
-#include "../net/connection.h"
-#include "../protocol/rtsp_builder.h"
-#include "../protocol/rtsp_parser.h"
-#include "../rtp/rtp_forwarder.h"
-#include "../util/log.h"
-#include "../util/status.h"
+#include "net/connection.h"
+#include "protocol/rtsp_builder.h"
+#include "protocol/rtsp_parser.h"
+#include "rtp/rtp_forwarder.h"
+#include "util/status.h"
 
 namespace rtsp_server
 {
@@ -22,6 +20,7 @@ enum class RtspSessionState
     kDescribeSent,  // DESCRIBE 已发送
     kSetupSent,     // SETUP 已发送
     kPlaying,       // 播放中
+    kPaused,        // 已暂停
     kTeardown       // 已关闭
 };
 
@@ -89,7 +88,7 @@ private:
     // 处理 PAUSE 请求
     Status HandlePause(const RtspRequest& request);
 
-    // 生成会话 ID
+    // 生成会话 ID（时间戳 + 递增序列号）
     std::string GenerateSessionId();
 
     RtspServer* server_;

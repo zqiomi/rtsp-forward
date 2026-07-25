@@ -1,8 +1,9 @@
 #include <cstring>
 
-#include "../../include/rtsp_server.h"
-#include "../core/rtsp_server.h"
-#include "../rtp/rtp_packet.h"
+#include "core/rtsp_server.h"
+#include "rtp/rtp_packet.h"
+#include "rtsp_server.h"
+#include "util/constants.h"
 
 // 内部服务器结构体
 struct RtspServerInternal
@@ -12,7 +13,6 @@ struct RtspServerInternal
 
 extern "C"
 {
-
 int rtsp_server_create(void** server, const RtspServerConfig* config)
 {
     // 参数校验：server 不能为空
@@ -31,14 +31,21 @@ int rtsp_server_create(void** server, const RtspServerConfig* config)
     }
 
     // 设置默认配置
-    int port = 554;
-    int max_sessions = 10;
-    size_t buffer_size = 65536;
+    std::string ip = rtsp_server::kDefaultBindIp;
+    int port = rtsp_server::kDefaultPort;
+    int max_sessions = rtsp_server::kDefaultMaxSessions;
+    size_t buffer_size = rtsp_server::kDefaultBufferSize;
     const char* sdp_content = nullptr;
 
     // 如果提供了配置，使用配置值
     if (config != nullptr)
     {
+        // 监听地址
+        if (config->ip != nullptr)
+        {
+            ip = config->ip;
+        }
+
         // 端口校验：1-65535
         if (config->port <= 0 || config->port > 65535)
         {
@@ -71,7 +78,7 @@ int rtsp_server_create(void** server, const RtspServerConfig* config)
     }
 
     // 创建内部实现
-    internal->impl = new rtsp_server::RtspServer(port, max_sessions, buffer_size);
+    internal->impl = new rtsp_server::RtspServer(ip, port, max_sessions, buffer_size);
     if (!internal->impl)
     {
         delete internal;
@@ -246,6 +253,8 @@ int rtsp_server_send_rtp(void* server, const uint8_t* data, size_t len, int stre
                 return RTSP_BUFFER_FULL;
             case rtsp_server::StatusCode::kLimitExceeded:
                 return RTSP_LIMIT_EXCEEDED;
+            case rtsp_server::StatusCode::kFailedPrecondition:
+                return RTSP_NOT_STARTED;
             default:
                 return RTSP_ERROR;
         }

@@ -6,16 +6,10 @@
 
 #include <cstring>
 
-#include "../util/log.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
-
-Connection::Connection(int fd)
-    : fd_(fd), closed_(false), read_buffer_(new RingBuffer(8192)), write_buffer_(new RingBuffer(8192))
-{
-    LOG_DEBUG("Connection created, fd=%d, buffer_size=8192", fd_);
-}
 
 Connection::Connection(int fd, size_t buffer_size)
     : fd_(fd), closed_(false), read_buffer_(new RingBuffer(buffer_size)), write_buffer_(new RingBuffer(buffer_size))
@@ -69,6 +63,8 @@ ssize_t Connection::Recv()
 
 ssize_t Connection::Send(const void* data, size_t len)
 {
+    std::lock_guard<std::mutex> lock(send_mutex_);
+
     if (closed_)
     {
         return 0;
@@ -109,6 +105,8 @@ ssize_t Connection::Send(const void* data, size_t len)
 
 ssize_t Connection::Flush()
 {
+    std::lock_guard<std::mutex> lock(send_mutex_);
+
     if (closed_)
     {
         return 0;

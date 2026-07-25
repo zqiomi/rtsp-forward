@@ -2,7 +2,8 @@
 
 #include <cstring>
 
-#include "../util/log.h"
+#include "util/constants.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
@@ -58,8 +59,8 @@ void RtpForwarder::BuildInterleavedHeader(uint8_t* header, int channel, size_t l
         return;
     }
 
-    // $ character
-    header[0] = '$';
+    // interleaved frame 标识符
+    header[0] = kRtpInterleavedMarker;
     // channel (0=RTP, 1=RTCP)
     header[1] = static_cast<uint8_t>(channel);
     // length (big-endian)

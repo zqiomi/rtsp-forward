@@ -4,7 +4,7 @@
 #include <functional>
 #include <vector>
 
-#include "../util/status.h"
+#include "util/status.h"
 
 namespace rtsp_server
 {
@@ -14,6 +14,7 @@ enum class EventType
 {
     kRead = 1 << 0,
     kWrite = 1 << 1,
+    kError = 1 << 2,  // 错误事件（EPOLLERR/EPOLLHUP）
 };
 
 // 事件结果

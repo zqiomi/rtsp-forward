@@ -4,10 +4,20 @@
 #include <sstream>
 #include <vector>
 
-#include "../util/log.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
+
+// 去除字符串首尾空格
+static std::string Trim(const std::string& str)
+{
+    std::string result = str;
+    result.erase(result.begin(), std::find_if(result.begin(), result.end(), [](int ch) { return !std::isspace(ch); }));
+    result.erase(std::find_if(result.rbegin(), result.rend(), [](int ch) { return !std::isspace(ch); }).base(),
+                 result.end());
+    return result;
+}
 
 Status RtspParser::Parse(const std::string& data, RtspRequest& request)
 {
@@ -115,12 +125,8 @@ Status RtspParser::ParseHeaders(const std::vector<std::string>& lines, RtspReque
         std::string value = line.substr(colon_pos + 1);
 
         // 去除空格
-        key.erase(key.begin(), std::find_if(key.begin(), key.end(), [](int ch) { return !std::isspace(ch); }));
-        key.erase(std::find_if(key.rbegin(), key.rend(), [](int ch) { return !std::isspace(ch); }).base(), key.end());
-
-        value.erase(value.begin(), std::find_if(value.begin(), value.end(), [](int ch) { return !std::isspace(ch); }));
-        value.erase(std::find_if(value.rbegin(), value.rend(), [](int ch) { return !std::isspace(ch); }).base(),
-                    value.end());
+        key = Trim(key);
+        value = Trim(value);
 
         // 转换为小写
         std::transform(key.begin(), key.end(), key.begin(), ::tolower);

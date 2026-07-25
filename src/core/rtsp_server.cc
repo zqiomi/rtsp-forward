@@ -1,19 +1,22 @@
 #include "rtsp_server.h"
 
 #include <memory>
+#include <vector>
 
 #include "../net/connection.h"
+#include "../util/constants.h"
+#include "../util/log.h"
 #include "rtsp_session.h"
 
 namespace rtsp_server
 {
 
-RtspServer::RtspServer(int port, int max_sessions, size_t buffer_size)
-    : running_(false), port_(port), max_sessions_(max_sessions), 
-      buffer_size_(buffer_size), ip_("0.0.0.0")
+RtspServer::RtspServer(const std::string& ip, int port, int max_sessions, size_t buffer_size)
+    : running_(false), port_(port), max_sessions_(max_sessions), buffer_size_(buffer_size), ip_(ip),
+      session_sequence_(0)
 {
-    LOG_INFO("RtspServer created, port=%d, max_sessions=%d, buffer_size=%zu", 
-             port_, max_sessions_, buffer_size_);
+    LOG_INFO("RtspServer created, ip=%s, port=%d, max_sessions=%d, buffer_size=%zu",
+             ip_.c_str(), port_, max_sessions_, buffer_size_);
 }
 
 RtspServer::~RtspServer()
@@ -76,11 +79,14 @@ void RtspServer::Stop()
     event_loop_.Stop();
 
     // 关闭所有会话
-    for (auto& pair : sessions_)
     {
-        pair.second->Close();
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        for (auto& pair : sessions_)
+        {
+            pair.second->Close();
+        }
+        sessions_.clear();
     }
-    sessions_.clear();
 
     // 关闭监听器
     listener_.Close();
@@ -108,16 +114,28 @@ Status RtspServer::BroadcastRtp(const RtpPacket& packet)
         return Status::FailedPrecondition("server not running");
     }
 
-    for (auto& pair : sessions_)
+    // 短暂持锁，拷贝需要转发的 session 列表
+    std::vector<std::shared_ptr<RtspSession>> playing_sessions;
     {
-        RtspSession* session = pair.second.get();
-        if (session->state() == RtspSessionState::kPlaying)
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        playing_sessions.reserve(sessions_.size());
+        for (auto& pair : sessions_)
         {
-            Status status = session->ForwardRtp(packet);
-            if (!status.ok())
+            RtspSession* session = pair.second.get();
+            if (session->state() == RtspSessionState::kPlaying)
             {
-                LOG_WARN("RtspServer::BroadcastRtp: forward failed for session %s", session->session_id().c_str());
+                playing_sessions.push_back(pair.second);
             }
+        }
+    }
+
+    // 释放锁后逐个转发，避免长时间持锁阻塞主线程
+    for (auto& session : playing_sessions)
+    {
+        Status status = session->ForwardRtp(packet);
+        if (!status.ok())
+        {
+            LOG_WARN("RtspServer::BroadcastRtp: forward failed for session %s", session->session_id().c_str());
         }
     }
 
@@ -129,11 +147,14 @@ void RtspServer::OnNewConnection(int fd)
     LOG_DEBUG("RtspServer::OnNewConnection: fd=%d", fd);
 
     // 检查最大会话数限制
-    if (sessions_.size() >= static_cast<size_t>(max_sessions_))
     {
-        LOG_WARN("RtspServer::OnNewConnection: max sessions exceeded, current=%zu, max=%d", 
-                 sessions_.size(), max_sessions_);
-        return;
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        if (sessions_.size() >= static_cast<size_t>(max_sessions_))
+        {
+            LOG_WARN("RtspServer::OnNewConnection: max sessions exceeded, current=%zu, max=%d", sessions_.size(),
+                     max_sessions_);
+            return;
+        }
     }
 
     int client_fd = listener_.Accept();
@@ -150,10 +171,20 @@ void RtspServer::OnNewConnection(int fd)
                                       [this](int fd, EventType type, EventResult result)
                                       {
                                           (void)type;
-                                          (void)result;
                                           if (fd > 0)
                                           {
-                                              this->OnRead(fd);
+                                              if (result.events & static_cast<int>(EventType::kRead))
+                                              {
+                                                  this->OnRead(fd);
+                                              }
+                                              if (result.events & static_cast<int>(EventType::kWrite))
+                                              {
+                                                  this->OnWrite(fd);
+                                              }
+                                              if (result.events & static_cast<int>(EventType::kError))
+                                              {
+                                                  this->OnError(fd);
+                                              }
                                           }
                                       });
 
@@ -163,12 +194,15 @@ void RtspServer::OnNewConnection(int fd)
         return;
     }
 
-    // 创建连接和会话（使用 unique_ptr 管理所有权）
-    std::unique_ptr<Connection> conn(new Connection(client_fd, buffer_size_));
-    std::unique_ptr<RtspSession> session(new RtspSession(this, conn.release()));
+    // 创建连接和会话（session 持有 conn 所有权，shared_ptr 保证 session 多线程安全）
+    Connection* conn = new Connection(client_fd, buffer_size_);
+    std::shared_ptr<RtspSession> session(new RtspSession(this, conn));
 
-    // 保存会话（connection 所有权转移到 session）
-    sessions_[client_fd] = std::move(session);
+    // 保存会话
+    {
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        sessions_[client_fd] = session;
+    }
 }
 
 void RtspServer::OnRead(int fd)
@@ -180,6 +214,40 @@ void RtspServer::OnRead(int fd)
 void RtspServer::OnWrite(int fd)
 {
     LOG_DEBUG("RtspServer::OnWrite: fd=%d", fd);
+
+    // 短暂持锁获取 session 引用
+    std::shared_ptr<RtspSession> session;
+    {
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        auto it = sessions_.find(fd);
+        if (it == sessions_.end())
+        {
+            return;
+        }
+        session = it->second;
+    }
+
+    Connection* conn = session->connection();
+    if (!conn || conn->IsClosed())
+    {
+        CloseConnection(fd);
+        return;
+    }
+
+    // 刷新写缓冲区
+    ssize_t ret = conn->Flush();
+    if (ret < 0)
+    {
+        LOG_ERROR("RtspServer::OnWrite: flush failed, fd=%d", fd);
+        CloseConnection(fd);
+        return;
+    }
+
+    // 如果缓冲区已清空，移除写事件
+    if (!conn->NeedFlush())
+    {
+        event_loop_.ModifyFd(fd, EventType::kRead);
+    }
 }
 
 void RtspServer::OnError(int fd)
@@ -192,24 +260,32 @@ void RtspServer::CloseConnection(int fd)
 {
     LOG_DEBUG("RtspServer::CloseConnection: fd=%d", fd);
 
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
     auto it = sessions_.find(fd);
     if (it != sessions_.end())
     {
         LOG_INFO("RtspServer::CloseConnection: client disconnected, fd=%d", fd);
+        // 从事件循环中移除
+        event_loop_.RemoveFd(fd);
         sessions_.erase(it);
     }
 }
 
 void RtspServer::ProcessConnectionData(int fd)
 {
-    auto it = sessions_.find(fd);
-    if (it == sessions_.end())
+    // 短暂持锁获取 session 引用
+    std::shared_ptr<RtspSession> session;
     {
-        LOG_ERROR("RtspServer::ProcessConnectionData: session not found for fd=%d", fd);
-        return;
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        auto it = sessions_.find(fd);
+        if (it == sessions_.end())
+        {
+            LOG_ERROR("RtspServer::ProcessConnectionData: session not found for fd=%d", fd);
+            return;
+        }
+        session = it->second;
     }
 
-    RtspSession* session = it->second.get();
     Connection* conn = session->connection();
 
     if (!conn || conn->IsClosed())
@@ -228,17 +304,36 @@ void RtspServer::ProcessConnectionData(int fd)
         return;
     }
 
-    // 尝试读取一行（RTSP 请求以 \r\n\r\n 结尾）
+    // 循环读取完整 RTSP 请求（以空行 \r\n\r\n 结尾）
+    std::string request_data;
     std::string line;
-    bool has_line = conn->ReadLine(line);
+    bool request_complete = false;
 
-    if (has_line)
+    while (conn->ReadLine(line))
     {
-        LOG_DEBUG("RtspServer::ProcessConnectionData: received data, fd=%d, size=%zu", fd, line.size());
-        Status process_status = session->ProcessData(line);
+        if (line.empty())
+        {
+            // 空行表示请求头结束
+            request_complete = true;
+            break;
+        }
+        request_data += line + "\r\n";
+    }
+
+    if (request_complete)
+    {
+        LOG_DEBUG("RtspServer::ProcessConnectionData: complete request, fd=%d, size=%zu", fd, request_data.size());
+        Status process_status = session->ProcessData(request_data);
         if (!process_status.ok())
         {
-            LOG_WARN("RtspServer::ProcessConnectionData: process failed, status=%s", process_status.ToString().c_str());
+            LOG_WARN("RtspServer::ProcessConnectionData: process failed, status=%s",
+                     process_status.ToString().c_str());
+        }
+
+        // 处理完请求后检查是否有数据需要刷新
+        if (conn->NeedFlush())
+        {
+            event_loop_.ModifyFd(fd, EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
         }
     }
     else if (conn->IsClosed())
@@ -246,6 +341,7 @@ void RtspServer::ProcessConnectionData(int fd)
         LOG_INFO("RtspServer::ProcessConnectionData: connection closed, fd=%d", fd);
         CloseConnection(fd);
     }
+    // 数据不完整，等待下次读事件
 }
 
 }  // namespace rtsp_server

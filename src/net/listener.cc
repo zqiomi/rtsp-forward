@@ -1,6 +1,7 @@
 #include "listener.h"
 
-#include "../util/log.h"
+#include "util/constants.h"
+#include "util/log.h"
 
 namespace rtsp_server
 {
@@ -44,7 +45,7 @@ Status Listener::Listen(const char* addr, int port)
         return status;
     }
 
-    status = socket_.Listen(128);
+    status = socket_.Listen(kListenBacklog);
     if (!status.ok())
     {
         return status;

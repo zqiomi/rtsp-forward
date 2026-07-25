@@ -3,8 +3,8 @@
 
 #include <netinet/in.h>
 
-#include "../util/status.h"
 #include "socket.h"
+#include "util/status.h"
 
 namespace rtsp_server
 {

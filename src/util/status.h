@@ -19,6 +19,7 @@ enum class StatusCode
     kNotImplemented = -7,
     kTimeout = -8,
     kLimitExceeded = -9,
+    kFailedPrecondition = -10,
 };
 
 // Status 类 - 用于错误处理
@@ -103,6 +104,8 @@ public:
                 return "Timeout: " + message_;
             case StatusCode::kLimitExceeded:
                 return "LimitExceeded: " + message_;
+            case StatusCode::kFailedPrecondition:
+                return "FailedPrecondition: " + message_;
             default:
                 return "Unknown";
         }
@@ -151,7 +154,7 @@ public:
     }
     static Status FailedPrecondition(const std::string& message = "")
     {
-        return Status(StatusCode::kError, message);
+        return Status(StatusCode::kFailedPrecondition, message);
     }
 
 private:

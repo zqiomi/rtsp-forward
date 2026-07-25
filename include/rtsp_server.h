@@ -26,17 +26,17 @@ extern "C"
  */
 typedef enum RtspErrorCode
 {
-    RTSP_OK = 0,              /**< 操作成功 */
-    RTSP_ERROR = -1,          /**< 通用错误 */
+    RTSP_OK = 0,                /**< 操作成功 */
+    RTSP_ERROR = -1,            /**< 通用错误 */
     RTSP_INVALID_ARGUMENT = -2, /**< 参数无效（如NULL指针、非法值等） */
-    RTSP_NETWORK_ERROR = -3,   /**< 网络错误（如端口冲突、bind失败等） */
-    RTSP_CLOSED = -4,         /**< 连接已关闭 */
-    RTSP_BUFFER_FULL = -5,    /**< 缓冲区满 */
-    RTSP_PARSE_ERROR = -6,    /**< 协议解析错误 */
-    RTSP_NOT_IMPLEMENTED = -7, /**< 功能未实现 */
-    RTSP_TIMEOUT = -8,        /**< 操作超时 */
-    RTSP_LIMIT_EXCEEDED = -9, /**< 超出限制（如最大会话数） */
-    RTSP_OUT_OF_MEMORY = -10, /**< 内存分配失败 */
+    RTSP_NETWORK_ERROR = -3,    /**< 网络错误（如端口冲突、bind失败等） */
+    RTSP_CLOSED = -4,           /**< 连接已关闭 */
+    RTSP_BUFFER_FULL = -5,      /**< 缓冲区满 */
+    RTSP_PARSE_ERROR = -6,      /**< 协议解析错误 */
+    RTSP_NOT_IMPLEMENTED = -7,  /**< 功能未实现 */
+    RTSP_TIMEOUT = -8,          /**< 操作超时 */
+    RTSP_LIMIT_EXCEEDED = -9,   /**< 超出限制（如最大会话数） */
+    RTSP_OUT_OF_MEMORY = -10,   /**< 内存分配失败 */
     RTSP_ALREADY_STARTED = -11, /**< 服务器已启动 */
     RTSP_NOT_STARTED = -12,     /**< 服务器未启动 */
 } RtspErrorCode;

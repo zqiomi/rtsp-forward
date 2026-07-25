@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "../util/status.h"
+#include "util/status.h"
 
 namespace rtsp_server
 {
@@ -36,7 +36,7 @@ struct RtspRequest
 // RTSP 请求解析器
 class RtspParser
 {
-   public:
+public:
     RtspParser() = default;
     ~RtspParser() = default;
 
@@ -55,7 +55,7 @@ class RtspParser
     // 将方法转换为字符串（静态方法）
     static std::string MethodToString(RtspMethod method);
 
-   private:
+private:
     // 解析请求行
     Status ParseRequestLine(const std::string& line, RtspRequest& request);
 
