@@ -26,10 +26,12 @@ enum class RtspSessionState
 };
 
 // RTSP 会话管理类
+class RtspServer;
+
 class RtspSession
 {
 public:
-    RtspSession(Connection* conn);
+    RtspSession(RtspServer* server, Connection* conn);
     ~RtspSession();
 
     // 禁止拷贝和移动
@@ -90,6 +92,7 @@ private:
     // 生成会话 ID
     std::string GenerateSessionId();
 
+    RtspServer* server_;
     Connection* conn_;
     RtspSessionState state_;
     std::string session_id_;

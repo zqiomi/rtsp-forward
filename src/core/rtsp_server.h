@@ -21,7 +21,14 @@ class RtspSession;
 class RtspServer
 {
 public:
-    RtspServer();
+    /**
+     * @brief 构造函数
+     *
+     * @param port 监听端口，默认554
+     * @param max_sessions 最大并发会话数，默认10
+     * @param buffer_size 每个连接的缓冲区大小，默认65536
+     */
+    RtspServer(int port = 554, int max_sessions = 10, size_t buffer_size = 65536);
     ~RtspServer();
 
     // 禁止拷贝和移动
@@ -30,28 +37,104 @@ public:
     RtspServer(RtspServer&&) = delete;
     RtspServer& operator=(RtspServer&&) = delete;
 
-    // 启动服务器
-    Status Start(const std::string& ip, int port);
+    /**
+     * @brief 启动服务器
+     *
+     * 使用构造时配置的端口和地址启动监听
+     *
+     * @return Status 启动结果
+     */
+    Status Start();
 
-    // 停止服务器
+    /**
+     * @brief 停止服务器
+     */
     void Stop();
 
-    // 运行事件循环（阻塞调用）
+    /**
+     * @brief 运行事件循环（阻塞调用）
+     */
     void Run();
 
-    // 向所有会话广播 RTP 包
+    /**
+     * @brief 向所有会话广播 RTP 包
+     *
+     * 实现"一个输入，多路转发"的核心功能：输入一个RTP包，
+     * 同时转发给所有处于PLAYING状态的会话。
+     *
+     * @param packet RTP包
+     * @return Status 转发结果
+     */
     Status BroadcastRtp(const RtpPacket& packet);
 
-    // 获取服务器状态
+    /**
+     * @brief 设置 SDP 内容
+     *
+     * @param sdp SDP字符串
+     */
+    void SetSdp(const std::string& sdp)
+    {
+        sdp_ = sdp;
+    }
+
+    /**
+     * @brief 获取 SDP 内容
+     *
+     * @return const std::string& SDP字符串
+     */
+    const std::string& GetSdp() const
+    {
+        return sdp_;
+    }
+
+    /**
+     * @brief 获取服务器运行状态
+     *
+     * @return bool true表示正在运行
+     */
     bool is_running() const
     {
         return running_;
     }
 
-    // 获取端口
+    /**
+     * @brief 获取监听端口
+     *
+     * @return int 端口号
+     */
     int port() const
     {
         return port_;
+    }
+
+    /**
+     * @brief 获取当前活跃会话数
+     *
+     * @return size_t 活跃会话数
+     */
+    size_t GetActiveSessions() const
+    {
+        return sessions_.size();
+    }
+
+    /**
+     * @brief 获取最大会话数限制
+     *
+     * @return int 最大会话数
+     */
+    int max_sessions() const
+    {
+        return max_sessions_;
+    }
+
+    /**
+     * @brief 获取缓冲区大小
+     *
+     * @return size_t 缓冲区大小
+     */
+    size_t buffer_size() const
+    {
+        return buffer_size_;
     }
 
 private:
@@ -75,6 +158,10 @@ private:
 
     bool running_;
     int port_;
+    int max_sessions_;
+    size_t buffer_size_;
+    std::string sdp_;
+    std::string ip_;
     EpollLoop event_loop_;
     Listener listener_;
     std::map<int, std::unique_ptr<RtspSession>> sessions_;

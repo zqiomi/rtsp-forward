@@ -8,9 +8,12 @@
 namespace rtsp_server
 {
 
-RtspServer::RtspServer() : running_(false), port_(0)
+RtspServer::RtspServer(int port, int max_sessions, size_t buffer_size)
+    : running_(false), port_(port), max_sessions_(max_sessions), 
+      buffer_size_(buffer_size), ip_("0.0.0.0")
 {
-    LOG_INFO("RtspServer created");
+    LOG_INFO("RtspServer created, port=%d, max_sessions=%d, buffer_size=%zu", 
+             port_, max_sessions_, buffer_size_);
 }
 
 RtspServer::~RtspServer()
@@ -19,19 +22,17 @@ RtspServer::~RtspServer()
     LOG_INFO("RtspServer destroyed");
 }
 
-Status RtspServer::Start(const std::string& ip, int port)
+Status RtspServer::Start()
 {
-    LOG_INFO("RtspServer::Start: ip=%s, port=%d", ip.c_str(), port);
+    LOG_INFO("RtspServer::Start: ip=%s, port=%d", ip_.c_str(), port_);
 
     // 创建监听器
-    Status status = listener_.Listen(ip.c_str(), port);
+    Status status = listener_.Listen(ip_.c_str(), port_);
     if (!status.ok())
     {
         LOG_ERROR("RtspServer::Start: listener listen failed, status=%s", status.ToString().c_str());
         return status;
     }
-
-    port_ = port;
 
     // 初始化事件循环
     status = event_loop_.Init();
@@ -56,7 +57,7 @@ Status RtspServer::Start(const std::string& ip, int port)
     }
 
     running_ = true;
-    LOG_INFO("RtspServer::Start: server started on %s:%d", ip.c_str(), port);
+    LOG_INFO("RtspServer::Start: server started on %s:%d", ip_.c_str(), port_);
     return Status::Ok();
 }
 
@@ -127,6 +128,14 @@ void RtspServer::OnNewConnection(int fd)
 {
     LOG_DEBUG("RtspServer::OnNewConnection: fd=%d", fd);
 
+    // 检查最大会话数限制
+    if (sessions_.size() >= static_cast<size_t>(max_sessions_))
+    {
+        LOG_WARN("RtspServer::OnNewConnection: max sessions exceeded, current=%zu, max=%d", 
+                 sessions_.size(), max_sessions_);
+        return;
+    }
+
     int client_fd = listener_.Accept();
     if (client_fd < 0)
     {
@@ -136,11 +145,7 @@ void RtspServer::OnNewConnection(int fd)
 
     LOG_INFO("RtspServer::OnNewConnection: new client connected, fd=%d", client_fd);
 
-    // 创建连接和会话
-    Connection* conn = new Connection(client_fd);
-    RtspSession* session = new RtspSession(conn);
-
-    // 添加读事件
+    // 添加读事件（先注册事件，再创建会话）
     Status status = event_loop_.AddFd(client_fd, EventType::kRead,
                                       [this](int fd, EventType type, EventResult result)
                                       {
@@ -155,13 +160,15 @@ void RtspServer::OnNewConnection(int fd)
     if (!status.ok())
     {
         LOG_ERROR("RtspServer::OnNewConnection: add client fd failed, status=%s", status.ToString().c_str());
-        delete session;
-        delete conn;
         return;
     }
 
-    // 保存会话（同时持有 connection 的所有权）
-    sessions_[client_fd] = std::unique_ptr<RtspSession>(session);
+    // 创建连接和会话（使用 unique_ptr 管理所有权）
+    std::unique_ptr<Connection> conn(new Connection(client_fd, buffer_size_));
+    std::unique_ptr<RtspSession> session(new RtspSession(this, conn.release()));
+
+    // 保存会话（connection 所有权转移到 session）
+    sessions_[client_fd] = std::move(session);
 }
 
 void RtspServer::OnRead(int fd)

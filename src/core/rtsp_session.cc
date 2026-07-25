@@ -4,11 +4,13 @@
 #include <random>
 #include <sstream>
 
+#include "rtsp_server.h"
+
 namespace rtsp_server
 {
 
-RtspSession::RtspSession(Connection* conn)
-    : conn_(conn), state_(RtspSessionState::kInit), session_id_(GenerateSessionId())
+RtspSession::RtspSession(RtspServer* server, Connection* conn)
+    : server_(server), conn_(conn), state_(RtspSessionState::kInit), session_id_(GenerateSessionId())
 {
     LOG_INFO("RtspSession created, session_id=%s", session_id_.c_str());
 }
@@ -88,14 +90,19 @@ Status RtspSession::HandleDescribe(const RtspRequest& request)
     LOG_DEBUG("RtspSession::HandleDescribe");
     url_ = request.url;
 
-    // 构建 SDP 内容（示例）
-    std::string sdp =
-        "v=0\r\n"
-        "o=- 12345 12345 IN IP4 127.0.0.1\r\n"
-        "s=RTSP Session\r\n"
-        "t=0 0\r\n"
-        "m=video 0 RTP/AVP 96\r\n"
-        "a=rtpmap:96 H264/90000\r\n";
+    // 从服务器获取 SDP 内容
+    std::string sdp = server_->GetSdp();
+    if (sdp.empty())
+    {
+        // 如果未设置 SDP，返回默认内容
+        sdp =
+            "v=0\r\n"
+            "o=- 12345 12345 IN IP4 127.0.0.1\r\n"
+            "s=RTSP Session\r\n"
+            "t=0 0\r\n"
+            "m=video 0 RTP/AVP 96\r\n"
+            "a=rtpmap:96 H264/90000\r\n";
+    }
 
     std::string response = builder_.BuildDescribeResponse(request.cseq, sdp);
     conn_->Send(response.data(), response.size());
