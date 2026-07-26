@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(rtsp_forward
-    VERSION 1.2.0
+    VERSION 1.2.1
     DESCRIPTION "轻量级RTSP转发服务器库"
     LANGUAGES CXX)
 
