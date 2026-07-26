@@ -1,4 +1,4 @@
-# RTSP Server 实现文档
+# RTSP 转发实现文档
 
 ## 1. 架构设计
 
@@ -7,14 +7,14 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      C API 层 (src/api/)                        │
-│  rtsp_server_create() / destroy() / start() / stop() / ...     │
+│  rtsp_forward_create() / destroy() / start() / stop() / ...     │
 │  纯C接口，不透明指针管理                                         │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Server 核心层 (src/core/)                    │
-│  RtspServer - 管理事件循环和Session生命周期                      │
+│  RtspForward - 管理事件循环和Session生命周期                      │
 │  RtspSession - RTSP会话管理                                     │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -48,7 +48,7 @@
 | 层级 | 目录 | 职责 |
 | :--- | :--- | :--- |
 | C API层 | `src/api/` | 纯C对外接口，不透明指针管理，错误码处理 |
-| Server核心层 | `src/core/` | RtspServer核心逻辑，事件循环，Session管理 |
+| Server核心层 | `src/core/` | RtspForward核心逻辑，事件循环，Session管理 |
 | 网络工具层 | `src/net/` | 事件循环抽象、Socket/Connection/Listener工具类 |
 | 协议层 | `src/protocol/` | RTSP协议解析与构建 |
 | RTP层 | `src/rtp/` | RTP包结构定义与透传（不解析不打包） |
@@ -57,9 +57,9 @@
 
 ## 2. 核心类设计
 
-### 2.1 RtspServer
+### 2.1 RtspForward
 
-**文件**: `src/core/rtsp_server.h`
+**文件**: `src/core/rtsp_forward.h`
 
 | 方法 | 功能 | 参数 | 返回值 |
 | :--- | :--- | :--- | :--- |
@@ -132,19 +132,19 @@ enum class RtspSessionState {
 
 ### 2.3 C API 接口
 
-**文件**: `include/rtsp_server.h`
+**文件**: `include/rtsp_forward.h`
 
 | 函数 | 功能 | 参数 | 返回值 |
 | :--- | :--- | :--- | :--- |
-| `rtsp_server_create()` | 创建服务器 | - | RtspServer* |
-| `rtsp_server_destroy()` | 销毁服务器 | server: 服务器句柄 | void |
-| `rtsp_server_start()` | 启动服务器 | server, ip, port | 错误码 |
-| `rtsp_server_stop()` | 停止服务器 | server | void |
-| `rtsp_server_run()` | 运行事件循环 | server | void |
-| `rtsp_server_send_rtp()` | 发送RTP包 | server, data, len, stream_index | 错误码 |
-| `rtsp_server_set_sdp()` | 设置SDP内容 | server, sdp | 错误码 |
-| `rtsp_server_is_running()` | 检查运行状态 | server | 0/1 |
-| `rtsp_server_get_port()` | 获取端口 | server | 端口号 |
+| `rtsp_forward_create()` | 创建服务器 | - | RtspForward* |
+| `rtsp_forward_destroy()` | 销毁服务器 | server: 服务器句柄 | void |
+| `rtsp_forward_start()` | 启动服务器 | server, ip, port | 错误码 |
+| `rtsp_forward_stop()` | 停止服务器 | server | void |
+| `rtsp_forward_run()` | 运行事件循环 | server | void |
+| `rtsp_forward_send_rtp()` | 发送RTP包 | server, data, len, stream_index | 错误码 |
+| `rtsp_forward_set_sdp()` | 设置SDP内容 | server, sdp | 错误码 |
+| `rtsp_forward_is_running()` | 检查运行状态 | server | 0/1 |
+| `rtsp_forward_get_port()` | 获取端口 | server | 端口号 |
 
 ### 2.4 线程安全策略
 
@@ -152,7 +152,7 @@ enum class RtspSessionState {
 
 **线程安全实现**：
 
-1. **sessions_ 容器保护**：`RtspServer` 使用 `std::mutex sessions_mutex_` 保护会话容器的增删查。sessions_ 使用 `std::shared_ptr<RtspSession>` 管理会话生命周期，确保多线程访问时不会悬空。
+1. **sessions_ 容器保护**：`RtspForward` 使用 `std::mutex sessions_mutex_` 保护会话容器的增删查。sessions_ 使用 `std::shared_ptr<RtspSession>` 管理会话生命周期，确保多线程访问时不会悬空。
 
 2. **BroadcastRtp 短暂持锁**：码流线程调用 `BroadcastRtp` 时，先短暂持锁拷贝需要转发的 session 列表（`shared_ptr` 引用计数 +1），释放锁后逐个转发，避免长时间持锁阻塞主线程。
 
@@ -162,13 +162,13 @@ enum class RtspSessionState {
 
 | API | 线程安全 | 说明 |
 | :--- | :--- | :--- |
-| `rtsp_server_create()` | 安全 | 可在任意线程调用 |
-| `rtsp_server_destroy()` | 安全 | 确保没有其他线程在使用 server 后调用 |
-| `rtsp_server_start()` | 安全 | 必须在 Run 之前调用 |
-| `rtsp_server_stop()` | 安全 | 可在任意线程调用 |
-| `rtsp_server_run()` | 安全 | 阻塞调用，运行 epoll 事件循环 |
-| `rtsp_server_send_rtp()` | 安全 | 线程安全，可在码流输入线程调用 |
-| `rtsp_server_set_sdp()` | 安全 | 建议在 Start 之前调用 |
+| `rtsp_forward_create()` | 安全 | 可在任意线程调用 |
+| `rtsp_forward_destroy()` | 安全 | 确保没有其他线程在使用 server 后调用 |
+| `rtsp_forward_start()` | 安全 | 必须在 Run 之前调用 |
+| `rtsp_forward_stop()` | 安全 | 可在任意线程调用 |
+| `rtsp_forward_run()` | 安全 | 阻塞调用，运行 epoll 事件循环 |
+| `rtsp_forward_send_rtp()` | 安全 | 线程安全，可在码流输入线程调用 |
+| `rtsp_forward_set_sdp()` | 安全 | 建议在 Start 之前调用 |
 
 ## 3. 网络工具层设计
 
@@ -290,10 +290,10 @@ struct RtpPacket {
 ### 4.3 RTP包推送流程
 
 ```
-rtsp_server_send_rtp(server, data, len, stream_index)
+rtsp_forward_send_rtp(server, data, len, stream_index)
     │
     ▼
-RtspServer::BroadcastRtp(packet)
+RtspForward::BroadcastRtp(packet)
     │
     └──► 遍历所有Session（仅PLAYING状态）
             │
@@ -357,11 +357,11 @@ typedef enum RtspErrorCode
  *
  * 用于创建服务器时传递配置参数。
  */
-typedef struct RtspServerConfig
+typedef struct RtspForwardConfig
 {
     int port;                /**< 监听端口，默认554 */
     const char* ip;          /**< 监听地址，默认"0.0.0.0" */
-} RtspServerConfig;
+} RtspForwardConfig;
 ```
 
 ### 5.4 函数注释
@@ -394,7 +394,7 @@ C++ 类及其成员函数必须添加注释：
 /**
  * @brief 类功能描述
  */
-class RtspServer
+class RtspForward
 {
 public:
     /**
@@ -402,12 +402,12 @@ public:
      *
      * @param param 参数说明
      */
-    RtspServer(int param);
+    RtspForward(int param);
 };
 ```
 
 ### 5.6 注释语言
-- 对外接口头文件（`include/rtsp_server.h`）使用中文注释
+- 对外接口头文件（`include/rtsp_forward.h`）使用中文注释
 - 内部实现文件（`src/` 目录下）使用中文注释
 - 保持注释语言一致性
 
@@ -416,10 +416,10 @@ public:
 ```
 src/
 ├── api/                          # C接口层
-│   ├── rtsp_server_api.cc        # C接口实现
+│   ├── rtsp_forward_api.cc        # C接口实现
 ├── core/                         # Server核心层
-│   ├── rtsp_server.cc            # RtspServer实现
-│   ├── rtsp_server.h             # RtspServer头文件
+│   ├── rtsp_forward.cc            # RtspForward实现
+│   ├── rtsp_forward.h             # RtspForward头文件
 │   ├── rtsp_session.cc           # RtspSession实现
 │   └── rtsp_session.h            # RtspSession头文件
 ├── net/                          # 网络工具层
@@ -453,14 +453,14 @@ src/
     └── common.h                  # 通用定义
 
 include/
-└── rtsp_server.h                 # 对外头文件（纯C）
+└── rtsp_forward.h                 # 对外头文件（纯C）
 
 demo/
 └── main.cc                       # C++测试demo
 
 doc/
-├── RTSP_SERVER_REQUIREMENTS.md   # 需求文档（不可修改）
-└── RTSP_SERVER_IMPLEMENTATION.md # 实现文档（可修改）
+├── RTSP_FORWARD_REQUIREMENTS.md   # 需求文档（不可修改）
+└── RTSP_FORWARD_IMPLEMENTATION.md # 实现文档（可修改）
 
 CMakeLists.txt                    # 编译配置
 ```
@@ -470,10 +470,10 @@ CMakeLists.txt                    # 编译配置
 ### 6.1 服务器创建流程
 
 ```
-rtsp_server_create()
+rtsp_forward_create()
     │
     ▼
-new RtspServer()
+new RtspForward()
     │
     ├──► event_loop_ (EpollLoop) 构造
     └──► listener_ (Listener) 构造
@@ -482,7 +482,7 @@ new RtspServer()
 ### 6.2 会话创建流程
 
 ```
-RtspServer::Run()
+RtspForward::Run()
     │
     ├──► event_loop_.Wait(timeout_ms)
     │       │
@@ -504,10 +504,10 @@ RtspServer::Run()
 ### 6.3 服务器销毁流程
 
 ```
-rtsp_server_destroy(server)
+rtsp_forward_destroy(server)
     │
     ▼
-RtspServer::~RtspServer()
+RtspForward::~RtspForward()
     │
     ├──► sessions_.clear() → 所有Session析构
     │       │
@@ -558,7 +558,7 @@ RtspServer::~RtspServer()
 
 ```cmake
 cmake_minimum_required(VERSION 3.10)
-project(rtsp_server VERSION 1.0.0)
+project(rtsp_forward VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -569,7 +569,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(src)
 include_directories(include)
 
-add_library(rtsp_server STATIC
+add_library(rtsp_forward STATIC
     src/util/log.cc
     src/buffer/ring_buffer.cc
     src/net/epoll_loop.cc
@@ -580,15 +580,15 @@ add_library(rtsp_server STATIC
     src/protocol/rtsp_builder.cc
     src/rtp/rtp_forwarder.cc
     src/core/rtsp_session.cc
-    src/core/rtsp_server.cc
-    src/api/rtsp_server_api.cc
+    src/core/rtsp_forward.cc
+    src/api/rtsp_forward_api.cc
 )
 
-install(TARGETS rtsp_server DESTINATION lib)
-install(FILES include/rtsp_server.h DESTINATION include)
+install(TARGETS rtsp_forward DESTINATION lib)
+install(FILES include/rtsp_forward.h DESTINATION include)
 
-add_executable(rtsp_server_demo demo/main.cc)
-target_link_libraries(rtsp_server_demo rtsp_server)
+add_executable(rtsp_forward_demo demo/main.cc)
+target_link_libraries(rtsp_forward_demo rtsp_forward)
 ```
 
 ### 8.2 编译命令
@@ -603,9 +603,9 @@ make
 
 | 产物 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| 静态库 | `build/librtsp_server.a` | RTSP Server库 |
-| 头文件 | `include/rtsp_server.h` | 对外接口 |
-| demo | `build/rtsp_server_demo` | 测试程序 |
+| 静态库 | `build/librtsp_forward.a` | RTSP转发库 |
+| 头文件 | `include/rtsp_forward.h` | 对外接口 |
+| demo | `build/rtsp_forward_demo` | 测试程序 |
 
 ## 9. 扩展性设计
 
@@ -646,7 +646,7 @@ make
 
 | 变更编号 | 变更内容 | 原因 | 版本 |
 | :--- | :--- | :--- | :--- |
-| CHG-001 | 移除RtspServerManager，改为不透明指针 | 简化实现，单实例已满足需求 | V1.0 |
+| CHG-001 | 移除RtspForwardManager，改为不透明指针 | 简化实现，单实例已满足需求 | V1.0 |
 | CHG-002 | 移除ResourceManager追踪机制 | RAII+unique_ptr已足够保证资源安全 | V1.0 |
 | CHG-003 | 简化API，移除配置结构体 | 减少复杂度，核心参数通过函数传递 | V1.0 |
 | CHG-004 | Session状态机改为阶段式 | 更精细的状态追踪 | V1.0 |
@@ -654,7 +654,7 @@ make
 | CHG-006 | 添加SDP外部设置机制 | 支持动态设置SDP内容，满足实际使用需求 | V1.0 |
 | CHG-007 | 修复OnNewConnection双重删除风险 | 使用unique_ptr管理资源所有权 | V1.0 |
 | CHG-008 | API句柄改为void*类型 | 更通用的不透明指针，避免头文件依赖 | V1.0 |
-| CHG-009 | 重新添加配置结构体RtspServerConfig | 支持最大会话数、缓冲区大小等配置参数 | V1.0 |
-| CHG-010 | rtsp_server_start移除ip/port参数 | 配置统一在create时指定，简化API | V1.0 |
-| CHG-011 | 添加rtsp_server_get_active_sessions API | 支持查询当前活跃会话数 | V1.0 |
+| CHG-009 | 重新添加配置结构体RtspForwardConfig | 支持最大会话数、缓冲区大小等配置参数 | V1.0 |
+| CHG-010 | rtsp_forward_start移除ip/port参数 | 配置统一在create时指定，简化API | V1.0 |
+| CHG-011 | 添加rtsp_forward_get_active_sessions API | 支持查询当前活跃会话数 | V1.0 |
 | CHG-012 | 添加Doxygen注释规范 | 提升代码文档质量，支持自动生成文档 | V1.0 |

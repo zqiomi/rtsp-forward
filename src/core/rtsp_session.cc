@@ -4,13 +4,13 @@
 #include <cstdint>
 #include <sstream>
 
-#include "rtsp_server.h"
+#include "rtsp_forward.h"
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
-RtspSession::RtspSession(RtspServer* server, Connection* conn)
+RtspSession::RtspSession(RtspForward* server, Connection* conn)
     : server_(server), conn_(conn), state_(RtspSessionState::kInit), session_id_(GenerateSessionId())
 {
     LOG_INFO("RtspSession created, session_id=%s", session_id_.c_str());
@@ -167,4 +167,4 @@ std::string RtspSession::GenerateSessionId()
     return ss.str();
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

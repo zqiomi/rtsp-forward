@@ -2,7 +2,7 @@
 
 #include "util/constants.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 std::string RtspBuilder::BuildResponse(int status_code, const std::string& reason_phrase)
@@ -136,4 +136,4 @@ std::string RtspBuilder::GetReasonPhrase(int status_code)
     }
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

@@ -1,11 +1,11 @@
-#ifndef RTSP_SERVER_RTP_FORWARDER_H_
-#define RTSP_SERVER_RTP_FORWARDER_H_
+#ifndef RTSP_FORWARD_RTP_FORWARDER_H_
+#define RTSP_FORWARD_RTP_FORWARDER_H_
 
 #include "net/connection.h"
 #include "rtp_packet.h"
 #include "util/status.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // RTP 转发器（仅透传，不解析不打包）
@@ -32,6 +32,6 @@ private:
     void BuildInterleavedHeader(uint8_t* header, int channel, size_t length);
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_RTP_FORWARDER_H_
+#endif  // RTSP_FORWARD_RTP_FORWARDER_H_

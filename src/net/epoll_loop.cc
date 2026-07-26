@@ -7,7 +7,7 @@
 #include "util/constants.h"
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 EpollLoop::EpollLoop() : epoll_fd_(-1), running_(false)
@@ -224,4 +224,4 @@ uint32_t EpollLoop::ToEpollEvents(EventType events)
     return ev;
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

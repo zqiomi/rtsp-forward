@@ -6,7 +6,7 @@
 
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // 去除字符串首尾空格
@@ -184,4 +184,4 @@ std::string RtspParser::MethodToString(RtspMethod method)
     }
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

@@ -1,5 +1,5 @@
-#ifndef RTSP_SERVER_CONNECTION_H_
-#define RTSP_SERVER_CONNECTION_H_
+#ifndef RTSP_FORWARD_CONNECTION_H_
+#define RTSP_FORWARD_CONNECTION_H_
 
 #include <memory>
 #include <mutex>
@@ -7,7 +7,7 @@
 
 #include "buffer/ring_buffer.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // Connection 工具类（带缓冲区）
@@ -75,6 +75,6 @@ private:
     std::mutex send_mutex_;  // 保护 Send/Flush 的线程安全
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_CONNECTION_H_
+#endif  // RTSP_FORWARD_CONNECTION_H_

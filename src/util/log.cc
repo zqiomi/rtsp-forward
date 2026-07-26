@@ -5,7 +5,7 @@
 #include <cstring>
 #include <ctime>
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // 静态成员初始化
@@ -79,4 +79,4 @@ void Logger::Log(LogLevel level, const char* file, const char* func, int line, c
     fflush(stderr);
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

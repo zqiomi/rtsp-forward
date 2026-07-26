@@ -1,10 +1,10 @@
-#ifndef RTSP_SERVER_RTP_PACKET_H_
-#define RTSP_SERVER_RTP_PACKET_H_
+#ifndef RTSP_FORWARD_RTP_PACKET_H_
+#define RTSP_FORWARD_RTP_PACKET_H_
 
 #include <cstddef>
 #include <cstdint>
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // RTP 包结构（仅透传，不解析不打包）
@@ -15,6 +15,6 @@ struct RtpPacket
     int stream_index;     // 流索引: 0=RTP, 1=RTCP
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_RTP_PACKET_H_
+#endif  // RTSP_FORWARD_RTP_PACKET_H_

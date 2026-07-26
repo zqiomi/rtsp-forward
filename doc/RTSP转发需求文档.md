@@ -1,10 +1,10 @@
-# RTSP Server 需求文档
+# RTSP 转发需求文档
 
 ## 1. 核心需求
 
 | 需求编号 | 需求描述 | 优先级 |
 | :--- | :--- | :--- |
-| REQ-001 | 轻量级RTSP Server库，仅透传RTP包，不做任何音视频处理 | P0 |
+| REQ-001 | 轻量级RTSP转发库，仅透传RTP包，不做任何音视频处理 | P0 |
 | REQ-002 | 对外暴露纯C接口，兼容C/C++调用 | P0 |
 | REQ-003 | 支持RTSP协议标准方法（OPTIONS、DESCRIBE、SETUP、PLAY、PAUSE、TEARDOWN） | P0 |
 | REQ-004 | C++11实现，禁用异常，仅使用RAII、虚函数等轻量特性 | P0 |
@@ -21,7 +21,7 @@
 | NFR-002 | 高性能，支持10+并发会话 | P1 |
 | NFR-003 | 资源自动管理，避免泄漏 | P1 |
 | NFR-004 | 支持双线程模型：主线程运行事件循环处理RTSP信令，码流输入线程调用RTP转发接口 | P0 |
-| NFR-005 | RTP转发接口（`rtsp_server_send_rtp`）线程安全，可在非主线程调用 | P0 |
+| NFR-005 | RTP转发接口（`rtsp_forward_send_rtp`）线程安全，可在非主线程调用 | P0 |
 
 ## 3. API 接口需求
 
@@ -30,7 +30,7 @@
 | 结构名 | 字段 | 类型 | 描述 |
 | :--- | :--- | :--- | :--- |
 | RtspErrorCode | - | enum | 错误码枚举 |
-| RtspServerConfig | - | struct | 服务器配置结构体 |
+| RtspForwardConfig | - | struct | 服务器配置结构体 |
 | void* | - | void* | 服务器句柄（不透明指针，使用void*类型） |
 
 ### 3.2 配置结构体字段
@@ -47,15 +47,15 @@
 
 | 函数名 | 功能描述 | 参数 | 返回值 |
 | :--- | :--- | :--- | :--- |
-| rtsp_server_create | 创建RTSP服务器实例 | config: 配置结构体（可为NULL，使用默认配置） | 服务器句柄(void*)/NULL |
-| rtsp_server_destroy | 销毁服务器实例 | server: 服务器句柄 | void |
-| rtsp_server_start | 启动服务器监听 | server: 服务器句柄 | 错误码 |
-| rtsp_server_stop | 停止服务器 | server: 服务器句柄 | void |
-| rtsp_server_run | 运行事件循环（阻塞） | server: 服务器句柄 | void |
-| rtsp_server_send_rtp | 发送RTP包到所有播放会话 | server, data, len, stream_index | 错误码 |
-| rtsp_server_set_sdp | 设置SDP内容 | server, sdp | 错误码 |
-| rtsp_server_is_running | 检查服务器是否运行 | server: 服务器句柄 | 0/1 |
-| rtsp_server_get_port | 获取监听端口 | server: 服务器句柄 | 端口号 |
+| rtsp_forward_create | 创建RTSP服务器实例 | config: 配置结构体（可为NULL，使用默认配置） | 服务器句柄(void*)/NULL |
+| rtsp_forward_destroy | 销毁服务器实例 | server: 服务器句柄 | void |
+| rtsp_forward_start | 启动服务器监听 | server: 服务器句柄 | 错误码 |
+| rtsp_forward_stop | 停止服务器 | server: 服务器句柄 | void |
+| rtsp_forward_run | 运行事件循环（阻塞） | server: 服务器句柄 | void |
+| rtsp_forward_send_rtp | 发送RTP包到所有播放会话 | server, data, len, stream_index | 错误码 |
+| rtsp_forward_set_sdp | 设置SDP内容 | server, sdp | 错误码 |
+| rtsp_forward_is_running | 检查服务器是否运行 | server: 服务器句柄 | 0/1 |
+| rtsp_forward_get_port | 获取监听端口 | server: 服务器句柄 | 端口号 |
 
 ### 3.3 错误码
 
@@ -185,8 +185,8 @@
 
 | 类型 | 规范 | 示例 |
 | :--- | :--- | :--- |
-| C API函数 | `rtsp_server_`前缀 + snake_case | `rtsp_server_create` |
-| C++类 | PascalCase | `RtspServer` |
+| C API函数 | `rtsp_forward_`前缀 + snake_case | `rtsp_forward_create` |
+| C++类 | PascalCase | `RtspForward` |
 | C++函数/变量 | snake_case | `process_request` |
 | 常量 | `k`前缀 + PascalCase | `kMaxSessions` |
 | 枚举值 | `k`前缀 + PascalCase | `kRead` |
@@ -206,5 +206,5 @@
 
 - C++11标准
 - 禁用异常（-fno-exceptions）
-- 编译产物：静态库`librtsp_server.a`
+- 编译产物：静态库`librtsp_forward.a`
 - 提供测试demo程序

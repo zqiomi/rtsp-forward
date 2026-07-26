@@ -8,7 +8,7 @@
 
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 Connection::Connection(int fd, size_t buffer_size)
@@ -206,4 +206,4 @@ void Connection::Close()
     }
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

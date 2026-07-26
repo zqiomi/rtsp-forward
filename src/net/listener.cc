@@ -3,7 +3,7 @@
 #include "util/constants.h"
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 Listener::Listener() {}
@@ -70,4 +70,4 @@ void Listener::Close()
     socket_.Close();
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

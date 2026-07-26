@@ -1,10 +1,10 @@
-#ifndef RTSP_SERVER_LOG_H_
-#define RTSP_SERVER_LOG_H_
+#ifndef RTSP_FORWARD_LOG_H_
+#define RTSP_FORWARD_LOG_H_
 
 #include <cstdarg>
 #include <string>
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // 日志级别
@@ -42,6 +42,6 @@ private:
 #define LOG_ERROR(format, ...) Logger::Log(LogLevel::kError, __FILE__, __func__, __LINE__, format, ##__VA_ARGS__)
 #define LOG_FATAL(format, ...) Logger::Log(LogLevel::kFatal, __FILE__, __func__, __LINE__, format, ##__VA_ARGS__)
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_LOG_H_
+#endif  // RTSP_FORWARD_LOG_H_

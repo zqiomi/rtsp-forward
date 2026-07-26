@@ -1,6 +1,6 @@
-# RTSP Server
+# RTSP转发
 
-轻量级RTSP Server库，支持一个输入多路转发。
+轻量级RTSP转发库，支持一个输入多路转发。
 
 ## 功能特性
 
@@ -21,39 +21,39 @@ make
 ## 使用
 
 ```c
-#include "rtsp_server.h"
+#include "rtsp_forward.h"
 
 void* server = NULL;
-RtspServerConfig config = {
+RtspForwardConfig config = {
     .port = 554,
     .max_sessions = 10,
     .buffer_size = 65536,
 };
 
 // 创建服务器
-rtsp_server_create(&server, &config);
+rtsp_forward_create(&server, &config);
 
 // 设置SDP
-rtsp_server_set_sdp(server, "v=0\r\n...");
+rtsp_forward_set_sdp(server, "v=0\r\n...");
 
 // 启动
-rtsp_server_start(server);
-rtsp_server_run(server);
+rtsp_forward_start(server);
+rtsp_forward_run(server);
 ```
 
 ## API 接口
 
 | 函数 | 功能 |
 | :--- | :--- |
-| `rtsp_server_create` | 创建服务器 |
-| `rtsp_server_destroy` | 销毁服务器 |
-| `rtsp_server_start` | 启动服务器 |
-| `rtsp_server_stop` | 停止服务器 |
-| `rtsp_server_run` | 运行事件循环 |
-| `rtsp_server_send_rtp` | 发送RTP包 |
-| `rtsp_server_set_sdp` | 设置SDP内容 |
+| `rtsp_forward_create` | 创建服务器 |
+| `rtsp_forward_destroy` | 销毁服务器 |
+| `rtsp_forward_start` | 启动服务器 |
+| `rtsp_forward_stop` | 停止服务器 |
+| `rtsp_forward_run` | 运行事件循环 |
+| `rtsp_forward_send_rtp` | 发送RTP包 |
+| `rtsp_forward_set_sdp` | 设置SDP内容 |
 
 ## 文档
 
-- [RTSP服务器需求文档](doc/RTSP服务器需求文档.md)
-- [RTSP服务器实现文档](doc/RTSP服务器实现文档.md)
+- [RTSP转发需求文档](doc/RTSP转发需求文档.md)
+- [RTSP转发实现文档](doc/RTSP转发实现文档.md)

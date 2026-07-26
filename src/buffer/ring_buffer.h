@@ -1,12 +1,12 @@
-#ifndef RTSP_SERVER_RING_BUFFER_H_
-#define RTSP_SERVER_RING_BUFFER_H_
+#ifndef RTSP_FORWARD_RING_BUFFER_H_
+#define RTSP_FORWARD_RING_BUFFER_H_
 
 #include <cstddef>
 #include <memory>
 
 #include "util/status.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // 环形缓冲区类
@@ -66,6 +66,6 @@ private:
     size_t readable_size_;            // 当前可读数据量
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_RING_BUFFER_H_
+#endif  // RTSP_FORWARD_RING_BUFFER_H_

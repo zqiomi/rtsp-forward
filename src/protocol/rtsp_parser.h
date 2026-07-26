@@ -1,5 +1,5 @@
-#ifndef RTSP_SERVER_RTSP_PARSER_H_
-#define RTSP_SERVER_RTSP_PARSER_H_
+#ifndef RTSP_FORWARD_RTSP_PARSER_H_
+#define RTSP_FORWARD_RTSP_PARSER_H_
 
 #include <map>
 #include <string>
@@ -7,7 +7,7 @@
 
 #include "util/status.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // RTSP 方法枚举
@@ -63,6 +63,6 @@ private:
     Status ParseHeaders(const std::vector<std::string>& lines, RtspRequest& request);
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_RTSP_PARSER_H_
+#endif  // RTSP_FORWARD_RTSP_PARSER_H_

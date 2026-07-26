@@ -10,7 +10,7 @@
 
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 Socket::Socket() : fd_(-1) {}
@@ -313,4 +313,4 @@ void Socket::Close()
     }
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

@@ -1,9 +1,9 @@
-#ifndef RTSP_SERVER_STATUS_H_
-#define RTSP_SERVER_STATUS_H_
+#ifndef RTSP_FORWARD_STATUS_H_
+#define RTSP_FORWARD_STATUS_H_
 
 #include <string>
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // 状态码枚举
@@ -162,6 +162,6 @@ private:
     std::string message_;
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_STATUS_H_
+#endif  // RTSP_FORWARD_STATUS_H_

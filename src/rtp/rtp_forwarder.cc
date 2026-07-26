@@ -5,7 +5,7 @@
 #include "util/constants.h"
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 Status RtpForwarder::ForwardTcp(Connection* conn, const RtpPacket& packet)
@@ -68,4 +68,4 @@ void RtpForwarder::BuildInterleavedHeader(uint8_t* header, int channel, size_t l
     header[3] = static_cast<uint8_t>(length & 0xFF);
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

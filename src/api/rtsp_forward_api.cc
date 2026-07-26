@@ -1,19 +1,19 @@
 #include <cstring>
 
-#include "core/rtsp_server.h"
+#include "core/rtsp_forward.h"
 #include "rtp/rtp_packet.h"
-#include "rtsp_server.h"
+#include "rtsp_forward.h"
 #include "util/constants.h"
 
 // 内部服务器结构体
-struct RtspServerInternal
+struct RtspForwardInternal
 {
-    rtsp_server::RtspServer* impl;
+    rtsp_forward::RtspForward* impl;
 };
 
 extern "C"
 {
-int rtsp_server_create(void** server, const RtspServerConfig* config)
+int rtsp_forward_create(void** server, const RtspForwardConfig* config)
 {
     // 参数校验：server 不能为空
     if (!server)
@@ -24,17 +24,17 @@ int rtsp_server_create(void** server, const RtspServerConfig* config)
     // 初始化输出参数为NULL
     *server = nullptr;
 
-    RtspServerInternal* internal = new RtspServerInternal();
+    RtspForwardInternal* internal = new RtspForwardInternal();
     if (!internal)
     {
         return RTSP_OUT_OF_MEMORY;
     }
 
     // 设置默认配置
-    std::string ip = rtsp_server::kDefaultBindIp;
-    int port = rtsp_server::kDefaultPort;
-    int max_sessions = rtsp_server::kDefaultMaxSessions;
-    size_t buffer_size = rtsp_server::kDefaultBufferSize;
+    std::string ip = rtsp_forward::kDefaultBindIp;
+    int port = rtsp_forward::kDefaultPort;
+    int max_sessions = rtsp_forward::kDefaultMaxSessions;
+    size_t buffer_size = rtsp_forward::kDefaultBufferSize;
     const char* sdp_content = nullptr;
 
     // 如果提供了配置，使用配置值
@@ -78,7 +78,7 @@ int rtsp_server_create(void** server, const RtspServerConfig* config)
     }
 
     // 创建内部实现
-    internal->impl = new rtsp_server::RtspServer(ip, port, max_sessions, buffer_size);
+    internal->impl = new rtsp_forward::RtspForward(ip, port, max_sessions, buffer_size);
     if (!internal->impl)
     {
         delete internal;
@@ -95,7 +95,7 @@ int rtsp_server_create(void** server, const RtspServerConfig* config)
     return RTSP_OK;
 }
 
-int rtsp_server_destroy(void* server)
+int rtsp_forward_destroy(void* server)
 {
     // 参数校验
     if (!server)
@@ -103,7 +103,7 @@ int rtsp_server_destroy(void* server)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (internal->impl)
     {
         delete internal->impl;
@@ -113,7 +113,7 @@ int rtsp_server_destroy(void* server)
     return RTSP_OK;
 }
 
-int rtsp_server_start(void* server)
+int rtsp_forward_start(void* server)
 {
     // 参数校验
     if (!server)
@@ -121,7 +121,7 @@ int rtsp_server_start(void* server)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;
@@ -133,15 +133,15 @@ int rtsp_server_start(void* server)
         return RTSP_ALREADY_STARTED;
     }
 
-    rtsp_server::Status status = internal->impl->Start();
+    rtsp_forward::Status status = internal->impl->Start();
     if (!status.ok())
     {
         // 根据内部错误码转换为对外错误码
         switch (status.code())
         {
-            case rtsp_server::StatusCode::kInvalidArgument:
+            case rtsp_forward::StatusCode::kInvalidArgument:
                 return RTSP_INVALID_ARGUMENT;
-            case rtsp_server::StatusCode::kNetworkError:
+            case rtsp_forward::StatusCode::kNetworkError:
                 return RTSP_NETWORK_ERROR;
             default:
                 return RTSP_ERROR;
@@ -151,7 +151,7 @@ int rtsp_server_start(void* server)
     return RTSP_OK;
 }
 
-int rtsp_server_stop(void* server)
+int rtsp_forward_stop(void* server)
 {
     // 参数校验
     if (!server)
@@ -159,7 +159,7 @@ int rtsp_server_stop(void* server)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;
@@ -175,7 +175,7 @@ int rtsp_server_stop(void* server)
     return RTSP_OK;
 }
 
-int rtsp_server_run(void* server)
+int rtsp_forward_run(void* server)
 {
     // 参数校验
     if (!server)
@@ -183,7 +183,7 @@ int rtsp_server_run(void* server)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;
@@ -199,7 +199,7 @@ int rtsp_server_run(void* server)
     return RTSP_OK;
 }
 
-int rtsp_server_send_rtp(void* server, const uint8_t* data, size_t len, int stream_index)
+int rtsp_forward_send_rtp(void* server, const uint8_t* data, size_t len, int stream_index)
 {
     // 参数校验
     if (!server)
@@ -207,7 +207,7 @@ int rtsp_server_send_rtp(void* server, const uint8_t* data, size_t len, int stre
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;
@@ -237,23 +237,23 @@ int rtsp_server_send_rtp(void* server, const uint8_t* data, size_t len, int stre
         return RTSP_INVALID_ARGUMENT;
     }
 
-    rtsp_server::RtpPacket packet;
+    rtsp_forward::RtpPacket packet;
     packet.data = data;
     packet.len = len;
     packet.stream_index = stream_index;
 
-    rtsp_server::Status status = internal->impl->BroadcastRtp(packet);
+    rtsp_forward::Status status = internal->impl->BroadcastRtp(packet);
     if (!status.ok())
     {
         switch (status.code())
         {
-            case rtsp_server::StatusCode::kInvalidArgument:
+            case rtsp_forward::StatusCode::kInvalidArgument:
                 return RTSP_INVALID_ARGUMENT;
-            case rtsp_server::StatusCode::kBufferFull:
+            case rtsp_forward::StatusCode::kBufferFull:
                 return RTSP_BUFFER_FULL;
-            case rtsp_server::StatusCode::kLimitExceeded:
+            case rtsp_forward::StatusCode::kLimitExceeded:
                 return RTSP_LIMIT_EXCEEDED;
-            case rtsp_server::StatusCode::kFailedPrecondition:
+            case rtsp_forward::StatusCode::kFailedPrecondition:
                 return RTSP_NOT_STARTED;
             default:
                 return RTSP_ERROR;
@@ -263,7 +263,7 @@ int rtsp_server_send_rtp(void* server, const uint8_t* data, size_t len, int stre
     return RTSP_OK;
 }
 
-int rtsp_server_set_sdp(void* server, const char* sdp)
+int rtsp_forward_set_sdp(void* server, const char* sdp)
 {
     // 参数校验
     if (!server)
@@ -271,7 +271,7 @@ int rtsp_server_set_sdp(void* server, const char* sdp)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;
@@ -281,7 +281,7 @@ int rtsp_server_set_sdp(void* server, const char* sdp)
     return RTSP_OK;
 }
 
-int rtsp_server_is_running(void* server, int* running)
+int rtsp_forward_is_running(void* server, int* running)
 {
     // 参数校验
     if (!server)
@@ -294,7 +294,7 @@ int rtsp_server_is_running(void* server, int* running)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;
@@ -304,7 +304,7 @@ int rtsp_server_is_running(void* server, int* running)
     return RTSP_OK;
 }
 
-int rtsp_server_get_port(void* server, int* port)
+int rtsp_forward_get_port(void* server, int* port)
 {
     // 参数校验
     if (!server)
@@ -317,7 +317,7 @@ int rtsp_server_get_port(void* server, int* port)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;
@@ -327,7 +327,7 @@ int rtsp_server_get_port(void* server, int* port)
     return RTSP_OK;
 }
 
-int rtsp_server_get_active_sessions(void* server, int* count)
+int rtsp_forward_get_active_sessions(void* server, int* count)
 {
     // 参数校验
     if (!server)
@@ -340,7 +340,7 @@ int rtsp_server_get_active_sessions(void* server, int* count)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    RtspServerInternal* internal = static_cast<RtspServerInternal*>(server);
+    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
     if (!internal->impl)
     {
         return RTSP_INVALID_ARGUMENT;

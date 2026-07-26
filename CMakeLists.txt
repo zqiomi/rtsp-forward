@@ -1,22 +1,29 @@
 cmake_minimum_required(VERSION 3.10)
-project(rtsp_server VERSION 1.0.0)
+project(rtsp_forward
+    VERSION 1.0.0
+    DESCRIPTION "轻量级RTSP转发服务器库"
+    LANGUAGES CXX)
 
+# ===== 编译选项 =====
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
-
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -fno-exceptions")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-include_directories(src)
-include_directories(include)
+# ===== 构建选项 =====
+option(BUILD_SHARED_LIBS "构建动态库" ON)
+option(BUILD_STATIC_LIBS "构建静态库" ON)
+option(BUILD_DEMO "构建示例程序" ON)
 
-# Phase 1: util + buffer
-# Phase 2: net
-# Phase 3: protocol + rtp
-# Phase 4: core
-# Phase 5: api + demo
-add_library(rtsp_server STATIC
+# 标准安装路径（支持 CMAKE_INSTALL_PREFIX 配置）
+include(GNUInstallDirs)
+
+# 头文件路径
+include_directories(${CMAKE_SOURCE_DIR}/src)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# ===== 源文件列表 =====
+set(RTSP_FORWARD_SOURCES
     src/util/log.cc
     src/buffer/ring_buffer.cc
     src/net/epoll_loop.cc
@@ -27,14 +34,68 @@ add_library(rtsp_server STATIC
     src/protocol/rtsp_builder.cc
     src/rtp/rtp_forwarder.cc
     src/core/rtsp_session.cc
-    src/core/rtsp_server.cc
-    src/api/rtsp_server_api.cc
+    src/core/rtsp_forward.cc
+    src/api/rtsp_forward_api.cc
 )
 
-# 安装目标
-install(TARGETS rtsp_server DESTINATION lib)
-install(FILES include/rtsp_server.h DESTINATION include)
+# ===== 动态库 =====
+if(BUILD_SHARED_LIBS)
+    add_library(rtsp_forward_shared SHARED ${RTSP_FORWARD_SOURCES})
+    set_target_properties(rtsp_forward_shared PROPERTIES
+        OUTPUT_NAME rtsp_forward
+        VERSION ${PROJECT_VERSION}        # librtsp_forward.so.1.0.0
+        SOVERSION ${PROJECT_VERSION_MAJOR} # librtsp_forward.so.1
+    )
+    install(TARGETS rtsp_forward_shared
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
 
-# Demo 程序
-add_executable(rtsp_server_demo demo/main.cc)
-target_link_libraries(rtsp_server_demo rtsp_server)
+# ===== 静态库 =====
+if(BUILD_STATIC_LIBS)
+    add_library(rtsp_forward_static STATIC ${RTSP_FORWARD_SOURCES})
+    set_target_properties(rtsp_forward_static PROPERTIES
+        OUTPUT_NAME rtsp_forward          # librtsp_forward.a
+        POSITION_INDEPENDENT_CODE ON     # 支持后续链接到动态库
+    )
+    install(TARGETS rtsp_forward_static
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
+
+# ===== 安装头文件 =====
+install(FILES include/rtsp_forward.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# ===== pkg-config 文件 =====
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/rtsp_forward.pc.in"
+    "${CMAKE_BINARY_DIR}/rtsp_forward.pc"
+    @ONLY
+)
+install(FILES "${CMAKE_BINARY_DIR}/rtsp_forward.pc"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+)
+
+# ===== Demo 程序 =====
+if(BUILD_DEMO)
+    add_executable(rtsp_forward_demo demo/main.cc)
+    if(BUILD_SHARED_LIBS)
+        target_link_libraries(rtsp_forward_demo rtsp_forward_shared)
+    else()
+        target_link_libraries(rtsp_forward_demo rtsp_forward_static)
+    endif()
+    install(TARGETS rtsp_forward_demo
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
+# ===== 安装摘要 =====
+message(STATUS "========== rtsp_forward ${PROJECT_VERSION} ==========")
+message(STATUS "动态库: ${BUILD_SHARED_LIBS}")
+message(STATUS "静态库: ${BUILD_STATIC_LIBS}")
+message(STATUS "示例程序: ${BUILD_DEMO}")
+message(STATUS "安装路径: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "库目录: ${CMAKE_INSTALL_LIBDIR}")
+message(STATUS "头文件目录: ${CMAKE_INSTALL_INCLUDEDIR}")
+message(STATUS "==========================================")

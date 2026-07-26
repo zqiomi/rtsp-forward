@@ -1,5 +1,5 @@
-#ifndef RTSP_SERVER_RTSP_SESSION_H_
-#define RTSP_SERVER_RTSP_SESSION_H_
+#ifndef RTSP_FORWARD_RTSP_SESSION_H_
+#define RTSP_FORWARD_RTSP_SESSION_H_
 
 #include <string>
 
@@ -9,7 +9,7 @@
 #include "rtp/rtp_forwarder.h"
 #include "util/status.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // RTSP 会话状态枚举
@@ -25,12 +25,12 @@ enum class RtspSessionState
 };
 
 // RTSP 会话管理类
-class RtspServer;
+class RtspForward;
 
 class RtspSession
 {
 public:
-    RtspSession(RtspServer* server, Connection* conn);
+    RtspSession(RtspForward* server, Connection* conn);
     ~RtspSession();
 
     // 禁止拷贝和移动
@@ -91,7 +91,7 @@ private:
     // 生成会话 ID（时间戳 + 递增序列号）
     std::string GenerateSessionId();
 
-    RtspServer* server_;
+    RtspForward* server_;
     Connection* conn_;
     RtspSessionState state_;
     std::string session_id_;
@@ -102,6 +102,6 @@ private:
     std::string transport_;
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_RTSP_SESSION_H_
+#endif  // RTSP_FORWARD_RTSP_SESSION_H_

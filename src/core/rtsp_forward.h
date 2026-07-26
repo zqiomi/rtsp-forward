@@ -1,5 +1,5 @@
-#ifndef RTSP_SERVER_RTSP_SERVER_H_
-#define RTSP_SERVER_RTSP_SERVER_H_
+#ifndef RTSP_FORWARD_RTSP_FORWARD_H_
+#define RTSP_FORWARD_RTSP_FORWARD_H_
 
 #include <cstdint>
 #include <map>
@@ -12,13 +12,13 @@
 #include "rtp/rtp_packet.h"
 #include "util/status.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 class RtspSession;
 
-// RTSP 服务器核心类
-class RtspServer
+// RTSP 转发核心类
+class RtspForward
 {
 public:
     /**
@@ -29,14 +29,14 @@ public:
      * @param max_sessions 最大并发会话数
      * @param buffer_size 每个连接的缓冲区大小
      */
-    RtspServer(const std::string& ip, int port, int max_sessions, size_t buffer_size);
-    ~RtspServer();
+    RtspForward(const std::string& ip, int port, int max_sessions, size_t buffer_size);
+    ~RtspForward();
 
     // 禁止拷贝和移动
-    RtspServer(const RtspServer&) = delete;
-    RtspServer& operator=(const RtspServer&) = delete;
-    RtspServer(RtspServer&&) = delete;
-    RtspServer& operator=(RtspServer&&) = delete;
+    RtspForward(const RtspForward&) = delete;
+    RtspForward& operator=(const RtspForward&) = delete;
+    RtspForward(RtspForward&&) = delete;
+    RtspForward& operator=(RtspForward&&) = delete;
 
     /**
      * @brief 启动服务器
@@ -181,6 +181,6 @@ private:
     std::mutex sessions_mutex_;  // 保护 sessions_ 容器的线程安全
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_RTSP_SERVER_H_
+#endif  // RTSP_FORWARD_RTSP_FORWARD_H_

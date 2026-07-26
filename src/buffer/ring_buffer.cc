@@ -4,7 +4,7 @@
 
 #include "util/log.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 RingBuffer::RingBuffer(size_t capacity) : capacity_(capacity), read_pos_(0), write_pos_(0), readable_size_(0)
@@ -172,4 +172,4 @@ void RingBuffer::Produce(size_t size)
     readable_size_ += size;
 }
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward

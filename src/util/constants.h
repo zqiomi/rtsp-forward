@@ -5,13 +5,13 @@
  * 集中管理项目中所有系统级硬编码常量，避免魔法数字和字符串散落在代码各处。
  */
 
-#ifndef RTSP_SERVER_CONSTANTS_H_
-#define RTSP_SERVER_CONSTANTS_H_
+#ifndef RTSP_FORWARD_CONSTANTS_H_
+#define RTSP_FORWARD_CONSTANTS_H_
 
 #include <cstddef>
 #include <cstdint>
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // ===== 网络默认配置 =====
@@ -68,6 +68,6 @@ static const int kDefaultRtpChannel = 0;
 /** 默认 RTCP 通道号 */
 static const int kDefaultRtcpChannel = 1;
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_CONSTANTS_H_
+#endif  // RTSP_FORWARD_CONSTANTS_H_

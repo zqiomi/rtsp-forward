@@ -1,12 +1,12 @@
-#ifndef RTSP_SERVER_LISTENER_H_
-#define RTSP_SERVER_LISTENER_H_
+#ifndef RTSP_FORWARD_LISTENER_H_
+#define RTSP_FORWARD_LISTENER_H_
 
 #include <netinet/in.h>
 
 #include "socket.h"
 #include "util/status.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // Listener 工具类（监听socket封装）
@@ -50,6 +50,6 @@ private:
     Socket socket_;
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_LISTENER_H_
+#endif  // RTSP_FORWARD_LISTENER_H_

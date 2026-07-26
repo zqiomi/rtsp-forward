@@ -1,12 +1,12 @@
-#ifndef RTSP_SERVER_SOCKET_H_
-#define RTSP_SERVER_SOCKET_H_
+#ifndef RTSP_FORWARD_SOCKET_H_
+#define RTSP_FORWARD_SOCKET_H_
 
 #include <netinet/in.h>
 #include <sys/socket.h>
 
 #include "util/status.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // Socket 工具类
@@ -66,6 +66,6 @@ private:
     int fd_;
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_SOCKET_H_
+#endif  // RTSP_FORWARD_SOCKET_H_

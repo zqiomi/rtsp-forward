@@ -1,5 +1,5 @@
-#ifndef RTSP_SERVER_EPOLL_LOOP_H_
-#define RTSP_SERVER_EPOLL_LOOP_H_
+#ifndef RTSP_FORWARD_EPOLL_LOOP_H_
+#define RTSP_FORWARD_EPOLL_LOOP_H_
 
 #include <sys/epoll.h>
 
@@ -10,7 +10,7 @@
 
 #include "event_loop.h"
 
-namespace rtsp_server
+namespace rtsp_forward
 {
 
 // EpollLoop - epoll 实现（Linux）
@@ -44,6 +44,6 @@ private:
     std::atomic<bool> running_;
 };
 
-}  // namespace rtsp_server
+}  // namespace rtsp_forward
 
-#endif  // RTSP_SERVER_EPOLL_LOOP_H_
+#endif  // RTSP_FORWARD_EPOLL_LOOP_H_
