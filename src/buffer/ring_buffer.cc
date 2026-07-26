@@ -7,10 +7,11 @@
 namespace rtsp_forward
 {
 
-RingBuffer::RingBuffer(size_t capacity) : capacity_(capacity), read_pos_(0), write_pos_(0), readable_size_(0)
+RingBuffer::RingBuffer(size_t capacity)
+    : capacity_(capacity > 0 ? capacity : 1), read_pos_(0), write_pos_(0), readable_size_(0)
 {
-    buffer_ = std::unique_ptr<char[]>(new char[capacity]);
-    LOG_DEBUG("RingBuffer[%p] created, capacity=%zu", this, capacity);
+    buffer_ = std::unique_ptr<char[]>(new char[capacity_]);
+    LOG_DEBUG("RingBuffer[%p] created, capacity=%zu", this, capacity_);
 }
 
 RingBuffer::~RingBuffer()
@@ -32,55 +33,21 @@ Status RingBuffer::Write(const void* data, size_t size)
 
     const char* src = static_cast<const char*>(data);
 
-    // 如果写入的数据不超过写指针到缓冲区末尾的距离
-    if (size <= capacity_ - write_pos_)
+    // 需要环绕写入时拆成两段；否则单次拷贝
+    if (size > capacity_ - write_pos_)
     {
-        memcpy(buffer_.get() + write_pos_, src, size);
-        write_pos_ += size;
-    }
-    else
-    {
-        // 需要环绕写入
         size_t first_part = capacity_ - write_pos_;
         memcpy(buffer_.get() + write_pos_, src, first_part);
         memcpy(buffer_.get(), src + first_part, size - first_part);
-        write_pos_ = size - first_part;
-    }
-
-    readable_size_ += size;
-    return Status::Ok();
-}
-
-Status RingBuffer::Read(void* data, size_t size)
-{
-    if (!data || size == 0)
-    {
-        return Status::InvalidArgument("invalid data or size");
-    }
-
-    if (size > readable_size_)
-    {
-        return Status::Error("not enough data");
-    }
-
-    char* dst = static_cast<char*>(data);
-
-    // 如果读取的数据不超过读指针到缓冲区末尾的距离
-    if (size <= capacity_ - read_pos_)
-    {
-        memcpy(dst, buffer_.get() + read_pos_, size);
-        read_pos_ += size;
     }
     else
     {
-        // 需要环绕读取
-        size_t first_part = capacity_ - read_pos_;
-        memcpy(dst, buffer_.get() + read_pos_, first_part);
-        memcpy(dst + first_part, buffer_.get(), size - first_part);
-        read_pos_ = size - first_part;
+        memcpy(buffer_.get() + write_pos_, src, size);
     }
 
-    readable_size_ -= size;
+    // 与 Produce() 一致：用模运算保证 write_pos_ 始终落在 [0, capacity_)
+    write_pos_ = (write_pos_ + size) % capacity_;
+    readable_size_ += size;
     return Status::Ok();
 }
 
@@ -98,17 +65,16 @@ Status RingBuffer::Peek(void* data, size_t size) const
 
     char* dst = static_cast<char*>(data);
 
-    // 如果读取的数据不超过读指针到缓冲区末尾的距离
-    if (size <= capacity_ - read_pos_)
+    // 环绕读取时拆成两段；Peek 不移动读指针
+    if (size > capacity_ - read_pos_)
     {
-        memcpy(dst, buffer_.get() + read_pos_, size);
-    }
-    else
-    {
-        // 需要环绕读取
         size_t first_part = capacity_ - read_pos_;
         memcpy(dst, buffer_.get() + read_pos_, first_part);
         memcpy(dst + first_part, buffer_.get(), size - first_part);
+    }
+    else
+    {
+        memcpy(dst, buffer_.get() + read_pos_, size);
     }
 
     return Status::Ok();
@@ -131,16 +97,11 @@ size_t RingBuffer::ContiguousWritableSize() const
     return writable < to_end ? writable : to_end;
 }
 
-size_t RingBuffer::Capacity() const
+size_t RingBuffer::ContiguousReadableSize() const
 {
-    return capacity_;
-}
-
-void RingBuffer::Clear()
-{
-    read_pos_ = 0;
-    write_pos_ = 0;
-    readable_size_ = 0;
+    size_t readable = ReadableSize();
+    size_t to_end = capacity_ - read_pos_;
+    return readable < to_end ? readable : to_end;
 }
 
 const char* RingBuffer::ReadPtr() const
@@ -162,7 +123,6 @@ void RingBuffer::Consume(size_t size)
     }
 
     read_pos_ = (read_pos_ + size) % capacity_;
-
     readable_size_ -= size;
 }
 
@@ -175,8 +135,37 @@ void RingBuffer::Produce(size_t size)
     }
 
     write_pos_ = (write_pos_ + size) % capacity_;
-
     readable_size_ += size;
+}
+
+size_t RingBuffer::FindChar(char c, size_t max_search_len) const
+{
+    if (readable_size_ == 0)
+    {
+        return static_cast<size_t>(-1);
+    }
+
+    size_t search_len = max_search_len > 0 ? std::min(max_search_len, readable_size_) : readable_size_;
+    size_t contiguous = ContiguousReadableSize();
+
+    const char* buf = buffer_.get() + read_pos_;
+    const char* found = reinterpret_cast<const char*>(memchr(buf, c, std::min(search_len, contiguous)));
+    if (found)
+    {
+        return found - buf;
+    }
+
+    if (search_len > contiguous)
+    {
+        buf = buffer_.get();
+        found = reinterpret_cast<const char*>(memchr(buf, c, search_len - contiguous));
+        if (found)
+        {
+            return contiguous + (found - buf);
+        }
+    }
+
+    return static_cast<size_t>(-1);
 }
 
 }  // namespace rtsp_forward

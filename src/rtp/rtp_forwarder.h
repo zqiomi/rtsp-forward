@@ -1,6 +1,9 @@
 #ifndef RTSP_FORWARD_RTP_FORWARDER_H_
 #define RTSP_FORWARD_RTP_FORWARDER_H_
 
+#include <cstring>
+#include <netinet/in.h>
+
 #include "net/connection.h"
 #include "rtp_packet.h"
 #include "util/status.h"
@@ -8,27 +11,33 @@
 namespace rtsp_forward
 {
 
-// RTP 转发器（仅透传，不解析不打包）
+struct UdpEndpoint
+{
+    int fd;
+    struct sockaddr_in addr;
+
+    UdpEndpoint() : fd(-1)
+    {
+        memset(&addr, 0, sizeof(addr));
+    }
+};
+
 class RtpForwarder
 {
 public:
     RtpForwarder() = default;
     ~RtpForwarder() = default;
 
-    // 禁止拷贝和移动
     RtpForwarder(const RtpForwarder&) = delete;
     RtpForwarder& operator=(const RtpForwarder&) = delete;
     RtpForwarder(RtpForwarder&&) = delete;
     RtpForwarder& operator=(RtpForwarder&&) = delete;
 
-    // 透传 RTP 包到连接（TCP模式，添加 interleaved frame 头）
     Status ForwardTcp(Connection* conn, const RtpPacket& packet);
 
-    // 透传 RTP 包（UDP模式，直接发送，暂未实现）
-    Status ForwardUdp(const RtpPacket& packet);
+    Status ForwardUdp(const UdpEndpoint& endpoint, const RtpPacket& packet);
 
 private:
-    // 构建 interleaved frame 头
     void BuildInterleavedHeader(uint8_t* header, int channel, size_t length);
 };
 

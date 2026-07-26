@@ -205,10 +205,10 @@ Status RtspForward::BroadcastRtp(const RtpPacket& packet)
 
         // 如果有数据被缓冲（socket 满导致 EAGAIN），注册 EPOLLOUT 触发 flush
         // 否则缓冲的 RTP 数据不会被发出，客户端会因超时断开重连
-        Connection* conn = session->connection();
-        if (conn && conn->NeedFlush())
+        Connection& conn = session->connection();
+        if (conn.NeedFlush())
         {
-            event_loop_.ModifyFd(conn->fd(),
+            event_loop_.ModifyFd(conn.fd(),
                                  EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
         }
     }
@@ -271,9 +271,8 @@ void RtspForward::OnNewConnection(int fd)
         return;
     }
 
-    // 创建连接和会话（session 持有 conn 所有权，shared_ptr 保证 session 多线程安全）
-    Connection* conn = new Connection(client_fd, buffer_size_);
-    std::shared_ptr<RtspSession> session(new RtspSession(this, conn));
+    // 创建会话（Session 直接管理 Connection，shared_ptr 保证 session 多线程安全）
+    auto session = std::make_shared<RtspSession>(this, client_fd, buffer_size_);
 
     // 保存会话
     {
@@ -304,15 +303,15 @@ void RtspForward::OnWrite(int fd)
         session = it->second;
     }
 
-    Connection* conn = session->connection();
-    if (!conn || conn->IsClosed())
+    Connection& conn = session->connection();
+    if (conn.IsClosed())
     {
         CloseConnection(fd);
         return;
     }
 
     // 刷新写缓冲区
-    ssize_t ret = conn->Flush();
+    ssize_t ret = conn.Flush();
     if (ret < 0)
     {
         LOG_ERROR("RtspForward::OnWrite: flush failed, fd=%d", fd);
@@ -321,7 +320,7 @@ void RtspForward::OnWrite(int fd)
     }
 
     // 如果缓冲区已清空，移除写事件
-    if (!conn->NeedFlush())
+    if (!conn.NeedFlush())
     {
         event_loop_.ModifyFd(fd, EventType::kRead);
     }
@@ -363,9 +362,9 @@ void RtspForward::ProcessConnectionData(int fd)
         session = it->second;
     }
 
-    Connection* conn = session->connection();
+    Connection& conn = session->connection();
 
-    if (!conn || conn->IsClosed())
+    if (conn.IsClosed())
     {
         LOG_ERROR("RtspForward::ProcessConnectionData: connection is closed, fd=%d", fd);
         CloseConnection(fd);
@@ -373,7 +372,7 @@ void RtspForward::ProcessConnectionData(int fd)
     }
 
     // 先接收数据到缓冲区
-    ssize_t ret = conn->Recv();
+    ssize_t ret = conn.Recv();
     if (ret < 0)
     {
         LOG_ERROR("RtspForward::ProcessConnectionData: recv failed, fd=%d", fd);
@@ -382,22 +381,22 @@ void RtspForward::ProcessConnectionData(int fd)
     }
 
     // 循环处理缓冲区中的所有消息（interleaved 帧 + RTSP 请求）
-    while (conn->GetReadBufferSize() > 0)
+    while (conn.GetReadBufferSize() > 0)
     {
         // 检测 interleaved 帧（客户端回传 RTCP，以 '$' 0x24 开头）
         // 格式: $ | channel(1) | length(2, big-endian) | data(length)
         uint8_t header[4];
-        if (conn->Peek(header, 4).ok() && header[0] == 0x24)
+        if (conn.Peek(header, 4).ok() && header[0] == 0x24)
         {
             uint16_t frame_len = static_cast<uint16_t>((header[2] << 8) | header[3]);
             size_t total = static_cast<size_t>(4) + frame_len;
-            if (conn->GetReadBufferSize() < total)
+            if (conn.GetReadBufferSize() < total)
             {
                 break;  // 数据不完整，等待下次读事件
             }
             LOG_TRACE("RtspForward::ProcessConnectionData: skip interleaved frame, fd=%d, channel=%d, len=%d", fd,
                       header[1], frame_len);
-            conn->Consume(total);
+            conn.Consume(total);
             continue;  // 处理下一条消息
         }
 
@@ -406,7 +405,7 @@ void RtspForward::ProcessConnectionData(int fd)
         std::string line;
         bool request_complete = false;
 
-        while (conn->ReadLine(line))
+        while (conn.ReadLine(line))
         {
             if (line.empty())
             {
@@ -427,14 +426,14 @@ void RtspForward::ProcessConnectionData(int fd)
             }
 
             // 处理完请求后检查是否有数据需要刷新
-            if (conn->NeedFlush())
+            if (conn.NeedFlush())
             {
                 event_loop_.ModifyFd(
                     fd, EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
             }
             // 继续循环处理下一条消息
         }
-        else if (conn->IsClosed())
+        else if (conn.IsClosed())
         {
             LOG_INFO("RtspForward::ProcessConnectionData: connection closed, fd=%d", fd);
             CloseConnection(fd);

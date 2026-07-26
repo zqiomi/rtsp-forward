@@ -130,14 +130,11 @@ Status RtspParser::ParseHeaders(const std::vector<std::string>& lines, RtspReque
         std::string key = line.substr(0, colon_pos);
         std::string value = line.substr(colon_pos + 1);
 
-        // 去除空格
         key = Trim(key);
         value = Trim(value);
 
-        // 转换为小写
         std::transform(key.begin(), key.end(), key.begin(), ::tolower);
 
-        // 解析 CSeq 头部
         if (key == "cseq")
         {
             char* end_ptr = nullptr;
@@ -151,11 +148,83 @@ Status RtspParser::ParseHeaders(const std::vector<std::string>& lines, RtspReque
                 request.cseq = 0;
             }
         }
+        else if (key == "transport")
+        {
+            request.transport = ParseTransport(value);
+        }
 
         request.headers[key] = value;
     }
 
     return Status::Ok();
+}
+
+TransportInfo RtspParser::ParseTransport(const std::string& transport_str)
+{
+    TransportInfo info;
+
+    if (transport_str.find("TCP") != std::string::npos)
+    {
+        info.is_tcp = true;
+    }
+    else if (transport_str.find("RTP/AVP") != std::string::npos || transport_str.find("UDP") != std::string::npos)
+    {
+        info.is_udp = true;
+    }
+
+    size_t client_port_pos = transport_str.find("client_port=");
+    if (client_port_pos != std::string::npos)
+    {
+        const char* p = transport_str.c_str() + client_port_pos + 12;
+        char* end_ptr = nullptr;
+        info.client_rtp_port = static_cast<int>(std::strtol(p, &end_ptr, 10));
+        if (*end_ptr == '-')
+        {
+            info.client_rtcp_port = static_cast<int>(std::strtol(end_ptr + 1, &end_ptr, 10));
+        }
+        else
+        {
+            info.client_rtcp_port = info.client_rtp_port + 1;
+        }
+    }
+
+    size_t server_port_pos = transport_str.find("server_port=");
+    if (server_port_pos != std::string::npos)
+    {
+        const char* p = transport_str.c_str() + server_port_pos + 12;
+        char* end_ptr = nullptr;
+        info.server_rtp_port = static_cast<int>(std::strtol(p, &end_ptr, 10));
+        if (*end_ptr == '-')
+        {
+            info.server_rtcp_port = static_cast<int>(std::strtol(end_ptr + 1, &end_ptr, 10));
+        }
+        else
+        {
+            info.server_rtcp_port = info.server_rtp_port + 1;
+        }
+    }
+
+    size_t interleaved_pos = transport_str.find("interleaved=");
+    if (interleaved_pos != std::string::npos)
+    {
+        const char* p = transport_str.c_str() + interleaved_pos + 12;
+        char* end_ptr = nullptr;
+        info.interleaved_rtp = static_cast<int>(std::strtol(p, &end_ptr, 10));
+        if (*end_ptr == '-')
+        {
+            info.interleaved_rtcp = static_cast<int>(std::strtol(end_ptr + 1, &end_ptr, 10));
+        }
+        else
+        {
+            info.interleaved_rtcp = info.interleaved_rtp + 1;
+        }
+    }
+
+    LOG_DEBUG("RtspParser::ParseTransport: is_udp=%d, is_tcp=%d, client_port=%d-%d, interleaved=%d-%d",
+              info.is_udp, info.is_tcp, info.client_rtp_port, info.client_rtcp_port,
+              info.interleaved_rtp, info.interleaved_rtcp);
+
+    return info;
 }
 
 RtspMethod RtspParser::ParseMethod(const std::string& method_str)

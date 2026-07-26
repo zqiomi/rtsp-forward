@@ -1,7 +1,6 @@
 #ifndef RTSP_FORWARD_CONNECTION_H_
 #define RTSP_FORWARD_CONNECTION_H_
 
-#include <memory>
 #include <mutex>
 #include <string>
 
@@ -33,7 +32,8 @@ public:
     ssize_t Flush();
 
     // 从输入缓冲区读取一行
-    bool ReadLine(std::string& line);
+    // max_line_len: 最大行长度，超过则截断（防止恶意攻击），默认 4096
+    bool ReadLine(std::string& line, size_t max_line_len = 4096);
 
     // 获取缓冲区可读数据
     const char* GetReadBuffer() const;
@@ -45,7 +45,7 @@ public:
     // 查看数据（不移动读指针）
     Status Peek(void* data, size_t size) const
     {
-        return read_buffer_->Peek(data, size);
+        return read_buffer_.Peek(data, size);
     }
 
     // 获取文件描述符
@@ -61,7 +61,7 @@ public:
     bool NeedFlush()
     {
         std::lock_guard<std::mutex> lock(send_mutex_);
-        return write_buffer_->ReadableSize() > 0;
+        return write_buffer_.ReadableSize() > 0;
     }
 
     // 关闭连接
@@ -76,8 +76,8 @@ public:
 private:
     int fd_;
     bool closed_;
-    std::unique_ptr<RingBuffer> read_buffer_;
-    std::unique_ptr<RingBuffer> write_buffer_;
+    RingBuffer read_buffer_;
+    RingBuffer write_buffer_;
     std::mutex send_mutex_;  // 保护 Send/Flush 的线程安全
 };
 

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <netinet/in.h>
 #include <string>
 
 #include "net/connection.h"
@@ -33,7 +34,7 @@ class RtspForward;
 class RtspSession
 {
 public:
-    RtspSession(RtspForward* server, Connection* conn);
+    RtspSession(RtspForward* server, int fd, size_t buffer_size);
     ~RtspSession();
 
     // 禁止拷贝和移动
@@ -43,7 +44,11 @@ public:
     RtspSession& operator=(RtspSession&&) = delete;
 
     // 获取连接
-    Connection* connection() const
+    Connection& connection()
+    {
+        return conn_;
+    }
+    const Connection& connection() const
     {
         return conn_;
     }
@@ -82,35 +87,20 @@ public:
     void UpdateActivity();
 
 private:
-    // 处理 RTSP 请求
     Status HandleRequest(const RtspRequest& request);
-
-    // 处理 OPTIONS 请求
     Status HandleOptions(const RtspRequest& request);
-
-    // 处理 DESCRIBE 请求
     Status HandleDescribe(const RtspRequest& request);
-
-    // 处理 SETUP 请求
     Status HandleSetup(const RtspRequest& request);
-
-    // 处理 PLAY 请求
     Status HandlePlay(const RtspRequest& request);
-
-    // 处理 TEARDOWN 请求
     Status HandleTeardown(const RtspRequest& request);
-
-    // 处理 PAUSE 请求
     Status HandlePause(const RtspRequest& request);
-
-    // 处理 GET_PARAMETER / SET_PARAMETER 请求（VLC 心跳保活）
     Status HandleParameter(const RtspRequest& request);
-
-    // 生成会话 ID（时间戳 + 递增序列号）
     std::string GenerateSessionId();
 
+    int CreateUdpSocket(int port);
+
     RtspForward* server_;
-    Connection* conn_;
+    Connection conn_;
     RtspSessionState state_;
     std::string session_id_;
     RtspParser parser_;
@@ -118,9 +108,13 @@ private:
     RtpForwarder rtp_forwarder_;
     std::string url_;
     std::string transport_;
+    bool is_udp_;
+    int udp_rtp_fd_;
+    int udp_rtcp_fd_;
+    struct sockaddr_in client_rtp_addr_;
+    struct sockaddr_in client_rtcp_addr_;
 
-    // 统计与超时相关
-    std::atomic<int64_t> last_activity_sec_;  // 最近活动时间（steady_clock 秒，原子保证线程安全）
+    std::atomic<int64_t> last_activity_sec_;
 };
 
 }  // namespace rtsp_forward

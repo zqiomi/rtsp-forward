@@ -39,11 +39,29 @@ Status RtpForwarder::ForwardTcp(Connection* conn, const RtpPacket& packet)
     return Status::Ok();
 }
 
-Status RtpForwarder::ForwardUdp(const RtpPacket& packet)
+Status RtpForwarder::ForwardUdp(const UdpEndpoint& endpoint, const RtpPacket& packet)
 {
-    (void)packet;
-    LOG_WARN("RtpForwarder::ForwardUdp: not implemented");
-    return Status::NotImplemented("UDP forwarding not implemented");
+    if (endpoint.fd < 0 || !packet.data || packet.len == 0)
+    {
+        return Status::InvalidArgument("invalid argument");
+    }
+
+    ssize_t ret = ::sendto(endpoint.fd, packet.data, packet.len, 0,
+                           reinterpret_cast<const struct sockaddr*>(&endpoint.addr),
+                           sizeof(endpoint.addr));
+    if (ret < 0)
+    {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            LOG_WARN("RtpForwarder::ForwardUdp: sendto would block");
+            return Status::Ok();
+        }
+        LOG_ERROR("RtpForwarder::ForwardUdp: sendto failed: %s", strerror(errno));
+        return Status::NetworkError("sendto failed");
+    }
+
+    LOG_TRACE("RtpForwarder::ForwardUdp: fd=%d, length=%zu", endpoint.fd, packet.len);
+    return Status::Ok();
 }
 
 void RtpForwarder::BuildInterleavedHeader(uint8_t* header, int channel, size_t length)

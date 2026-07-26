@@ -39,7 +39,22 @@ typedef enum RtspErrorCode
     RTSP_OUT_OF_MEMORY = -10,   /**< 内存分配失败 */
     RTSP_ALREADY_STARTED = -11, /**< 服务器已启动 */
     RTSP_NOT_STARTED = -12,     /**< 服务器未启动 */
+    RTSP_UNSUPPORTED_TRANSPORT = -13, /**< 不支持的传输协议 */
+    RTSP_INTERNAL_ERROR = -14,        /**< 内部错误 */
 } RtspErrorCode;
+
+/**
+ * @brief 日志级别定义
+ */
+typedef enum RtspLogLevel
+{
+    RTSP_LOG_TRACE = 0, /**< 详细跟踪信息 */
+    RTSP_LOG_DEBUG = 1, /**< 调试信息 */
+    RTSP_LOG_INFO = 2,  /**< 一般信息 */
+    RTSP_LOG_WARN = 3,  /**< 警告信息 */
+    RTSP_LOG_ERROR = 4, /**< 错误信息 */
+    RTSP_LOG_FATAL = 5, /**< 致命错误 */
+} RtspLogLevel;
 
 /**
  * @brief RTSP转发 配置结构体
@@ -203,21 +218,26 @@ int rtsp_forward_get_info(void* server, RtspForwardInfo* info);
 /**
  * @brief 获取版本号字符串
  *
- * @return 版本号字符串，如 "1.1.0"，静态存储，无需释放
+ * @return 版本号字符串，如 "1.2.0"，静态存储，无需释放
  */
 const char* rtsp_forward_version_string(void);
 
 /**
- * @brief 获取编译信息字符串
+ * @brief 设置全局日志级别
  *
- * @return 编译信息字符串，如 "Built at Jul 26 2026 09:30:48"，静态存储，无需释放
+ * @param[in] level 日志级别，RTSP_LOG_TRACE ~ RTSP_LOG_FATAL
+ * @return RTSP_OK表示成功，其他值表示失败
+ *
+ * @note 此函数全局生效，影响所有服务器实例的日志输出
  */
-const char* rtsp_forward_build_info(void);
+int rtsp_forward_set_log_level(RtspLogLevel level);
 
 /**
- * @brief 打印版本信息到 stdout
+ * @brief 获取当前日志级别
+ *
+ * @return 当前日志级别
  */
-void rtsp_forward_print_version(void);
+RtspLogLevel rtsp_forward_get_log_level(void);
 
 #ifdef __cplusplus
 }

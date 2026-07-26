@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "core/rtsp_forward.h"
+#include "util/log.h"
 #include "rtp/rtp_packet.h"
 #include "rtsp_forward.h"
 #include "util/constants.h"
@@ -22,15 +23,7 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
     {
         return RTSP_INVALID_ARGUMENT;
     }
-
-    // 初始化输出参数为NULL
     *server = nullptr;
-
-    RtspForwardInternal* internal = new RtspForwardInternal();
-    if (!internal)
-    {
-        return RTSP_OUT_OF_MEMORY;
-    }
 
     // 设置默认配置
     std::string ip = rtsp_forward::kDefaultBindIp;
@@ -53,7 +46,6 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
         // 端口校验：1-65535
         if (config->port <= 0 || config->port > 65535)
         {
-            delete internal;
             return RTSP_INVALID_ARGUMENT;
         }
         port = config->port;
@@ -61,7 +53,6 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
         // 最大会话数校验：必须大于0
         if (config->max_sessions <= 0)
         {
-            delete internal;
             return RTSP_INVALID_ARGUMENT;
         }
         max_sessions = config->max_sessions;
@@ -69,7 +60,6 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
         // 缓冲区大小校验：必须大于0
         if (config->buffer_size == 0)
         {
-            delete internal;
             return RTSP_INVALID_ARGUMENT;
         }
         buffer_size = config->buffer_size;
@@ -83,17 +73,21 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
         // 超时配置：负数非法，0表示不超时
         if (config->connection_timeout_sec < 0)
         {
-            delete internal;
             return RTSP_INVALID_ARGUMENT;
         }
         connection_timeout_sec = config->connection_timeout_sec;
 
         if (config->session_timeout_sec < 0)
         {
-            delete internal;
             return RTSP_INVALID_ARGUMENT;
         }
         session_timeout_sec = config->session_timeout_sec;
+    }
+
+    RtspForwardInternal* internal = new RtspForwardInternal();
+    if (!internal)
+    {
+        return RTSP_OUT_OF_MEMORY;
     }
 
     // 创建内部实现
@@ -326,17 +320,65 @@ int rtsp_forward_get_info(void* server, RtspForwardInfo* info)
 
 const char* rtsp_forward_version_string(void)
 {
-    return RTSP_FORWARD_VERSION_STRING;
+    return RTSP_FORWARD_VERSION_STRING " Built at " __DATE__ " " __TIME__;
 }
 
-const char* rtsp_forward_build_info(void)
+int rtsp_forward_set_log_level(RtspLogLevel level)
 {
-    return "Built at " __DATE__ " " __TIME__;
+    if (level < RTSP_LOG_TRACE || level > RTSP_LOG_FATAL)
+    {
+        return RTSP_INVALID_ARGUMENT;
+    }
+
+    rtsp_forward::LogLevel internal_level;
+    switch (level)
+    {
+        case RTSP_LOG_TRACE:
+            internal_level = rtsp_forward::LogLevel::kTrace;
+            break;
+        case RTSP_LOG_DEBUG:
+            internal_level = rtsp_forward::LogLevel::kDebug;
+            break;
+        case RTSP_LOG_INFO:
+            internal_level = rtsp_forward::LogLevel::kInfo;
+            break;
+        case RTSP_LOG_WARN:
+            internal_level = rtsp_forward::LogLevel::kWarn;
+            break;
+        case RTSP_LOG_ERROR:
+            internal_level = rtsp_forward::LogLevel::kError;
+            break;
+        case RTSP_LOG_FATAL:
+            internal_level = rtsp_forward::LogLevel::kFatal;
+            break;
+        default:
+            return RTSP_INVALID_ARGUMENT;
+    }
+
+    rtsp_forward::Logger::SetLevel(internal_level);
+    return RTSP_OK;
 }
 
-void rtsp_forward_print_version(void)
+RtspLogLevel rtsp_forward_get_log_level(void)
 {
-    printf("rtsp_forward %s (%s %s)\n", RTSP_FORWARD_VERSION_STRING, __DATE__, __TIME__);
+    rtsp_forward::LogLevel internal_level = rtsp_forward::Logger::GetLevel();
+    switch (internal_level)
+    {
+        case rtsp_forward::LogLevel::kTrace:
+            return RTSP_LOG_TRACE;
+        case rtsp_forward::LogLevel::kDebug:
+            return RTSP_LOG_DEBUG;
+        case rtsp_forward::LogLevel::kInfo:
+            return RTSP_LOG_INFO;
+        case rtsp_forward::LogLevel::kWarn:
+            return RTSP_LOG_WARN;
+        case rtsp_forward::LogLevel::kError:
+            return RTSP_LOG_ERROR;
+        case rtsp_forward::LogLevel::kFatal:
+            return RTSP_LOG_FATAL;
+        default:
+            return RTSP_LOG_DEBUG;
+    }
 }
 
 }  // extern "C"

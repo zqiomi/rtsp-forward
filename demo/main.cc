@@ -100,7 +100,7 @@ int main(int argc, char* argv[])
         rtp_port = atoi(argv[2]);
     }
 
-    rtsp_forward_print_version();
+    printf("  RTSP Forward Lib %s\n", rtsp_forward_version_string());
     printf("  RTSP port: %d  (for VLC/clients)\n", port);
     printf("  RTP  port: %d  (for ffmpeg input)\n", rtp_port);
     printf("\n");

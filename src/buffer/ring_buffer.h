@@ -28,9 +28,6 @@ public:
     // 写入数据
     Status Write(const void* data, size_t size);
 
-    // 读取数据
-    Status Read(void* data, size_t size);
-
     // 查看数据（不移动读指针）
     Status Peek(void* data, size_t size) const;
 
@@ -43,11 +40,8 @@ public:
     // 获取从 WritePtr 起的连续可写空间大小（不越过 buffer 末尾，避免环绕导致越界写）
     size_t ContiguousWritableSize() const;
 
-    // 获取总容量
-    size_t Capacity() const;
-
-    // 清空缓冲区
-    void Clear();
+    // 获取从 ReadPtr 起的连续可读空间大小（不越过 buffer 末尾，避免环绕导致越界读）
+    size_t ContiguousReadableSize() const;
 
     // 获取读指针位置的数据（用于直接读取）
     const char* ReadPtr() const;
@@ -60,6 +54,11 @@ public:
 
     // 确认写入了多少数据
     void Produce(size_t size);
+
+    // 在可读数据中查找指定字符，返回相对于读指针的偏移量
+    // max_search_len: 最大搜索长度，0 表示搜索全部可读数据
+    // 未找到返回 npos
+    size_t FindChar(char c, size_t max_search_len = 0) const;
 
 private:
     std::unique_ptr<char[]> buffer_;  // 缓冲区内存

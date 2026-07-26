@@ -75,6 +75,23 @@ std::string RtspBuilder::BuildSetupResponse(int cseq, const std::string& session
     return BuildResponse(200, "OK", headers);
 }
 
+std::string RtspBuilder::BuildSetupResponseUdp(int cseq, const std::string& session_id, int server_rtp_port, int server_rtcp_port,
+                                                int client_rtp_port, int client_rtcp_port)
+{
+    std::map<std::string, std::string> headers;
+    headers["CSeq"] = std::to_string(cseq);
+    std::string transport = "RTP/AVP;unicast;client_port=" + std::to_string(client_rtp_port) + "-" +
+                            std::to_string(client_rtcp_port) + ";server_port=" + std::to_string(server_rtp_port) + "-" +
+                            std::to_string(server_rtcp_port);
+    headers["Transport"] = transport;
+    if (!session_id.empty())
+    {
+        headers["Session"] = session_id;
+    }
+
+    return BuildResponse(200, "OK", headers);
+}
+
 std::string RtspBuilder::BuildPlayResponse(int cseq, const std::string& session_id)
 {
     std::map<std::string, std::string> headers;
