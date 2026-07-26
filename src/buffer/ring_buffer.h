@@ -60,6 +60,8 @@ public:
     // 未找到返回 npos
     size_t FindChar(char c, size_t max_search_len = 0) const;
 
+    static constexpr size_t npos = static_cast<size_t>(-1);
+
 private:
     std::unique_ptr<char[]> buffer_;  // 缓冲区内存
     size_t capacity_;                 // 总容量

@@ -67,15 +67,14 @@ public:
     // 关闭连接
     void Close();
 
-    // 连接是否关闭
+    // 连接是否关闭（本地 fd 已释放）
     bool IsClosed() const
     {
-        return closed_;
+        return fd_ == -1;
     }
 
 private:
     int fd_;
-    bool closed_;
     RingBuffer read_buffer_;
     RingBuffer write_buffer_;
     std::mutex send_mutex_;  // 保护 Send/Flush 的线程安全

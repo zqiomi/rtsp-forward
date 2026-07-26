@@ -54,7 +54,7 @@ Status RtpForwarder::ForwardUdp(const UdpEndpoint& endpoint, const RtpPacket& pa
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
             LOG_WARN("RtpForwarder::ForwardUdp: sendto would block");
-            return Status::Ok();
+            return Status::ResourceExhausted("sendto would block");
         }
         LOG_ERROR("RtpForwarder::ForwardUdp: sendto failed: %s", strerror(errno));
         return Status::NetworkError("sendto failed");

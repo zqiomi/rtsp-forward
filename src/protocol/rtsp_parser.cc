@@ -171,6 +171,11 @@ TransportInfo RtspParser::ParseTransport(const std::string& transport_str)
     {
         info.is_udp = true;
     }
+    else
+    {
+        // RTSP 默认使用 UDP (RTP/AVP)，如果无法识别传输类型，默认设为 UDP
+        info.is_udp = true;
+    }
 
     size_t client_port_pos = transport_str.find("client_port=");
     if (client_port_pos != std::string::npos)

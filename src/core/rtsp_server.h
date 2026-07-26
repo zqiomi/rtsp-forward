@@ -1,5 +1,5 @@
-#ifndef RTSP_FORWARD_RTSP_FORWARD_H_
-#define RTSP_FORWARD_RTSP_FORWARD_H_
+#ifndef RTSP_FORWARD_RTSP_SERVER_H_
+#define RTSP_FORWARD_RTSP_SERVER_H_
 
 #include <atomic>
 #include <chrono>
@@ -200,4 +200,4 @@ private:
 
 }  // namespace rtsp_forward
 
-#endif  // RTSP_FORWARD_RTSP_FORWARD_H_
+#endif  // RTSP_FORWARD_RTSP_SERVER_H_

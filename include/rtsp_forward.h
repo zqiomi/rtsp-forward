@@ -3,7 +3,10 @@
  * @brief RTSP转发 对外接口头文件
  *
  * 轻量级RTSP转发库，支持一个输入多路转发，即外部输入RTP包，同时透传到多个RTSP客户端。
- * 所有API必须在同一线程调用（单线程模型）。
+ *
+ * 双线程模型支持：
+ * - 主线程：调用 rtsp_forward_run() 运行事件循环，处理RTSP信令
+ * - 码流线程：调用 rtsp_forward_send_rtp() 发送RTP包，线程安全
  *
  * 所有API返回int错误码：
  * - RTSP_OK (0): 成功

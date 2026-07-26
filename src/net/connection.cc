@@ -12,8 +12,7 @@
 namespace rtsp_forward
 {
 
-Connection::Connection(int fd, size_t buffer_size)
-    : fd_(fd), closed_(false), read_buffer_(buffer_size), write_buffer_(buffer_size)
+Connection::Connection(int fd, size_t buffer_size) : fd_(fd), read_buffer_(buffer_size), write_buffer_(buffer_size)
 {
     LOG_DEBUG("Connection created, fd=%d, buffer_size=%zu", fd_, buffer_size);
 }
@@ -25,7 +24,7 @@ Connection::~Connection()
 
 ssize_t Connection::Recv()
 {
-    if (closed_)
+    if (IsClosed())
     {
         return 0;
     }
@@ -54,7 +53,6 @@ ssize_t Connection::Recv()
     if (ret == 0)
     {
         LOG_DEBUG("Connection::Recv: fd=%d, connection closed", fd_);
-        closed_ = true;
         return 0;
     }
 
@@ -67,7 +65,7 @@ ssize_t Connection::Send(const void* data, size_t len)
 {
     std::lock_guard<std::mutex> lock(send_mutex_);
 
-    if (closed_)
+    if (IsClosed())
     {
         return 0;
     }
@@ -124,7 +122,7 @@ ssize_t Connection::Flush()
 {
     std::lock_guard<std::mutex> lock(send_mutex_);
 
-    if (closed_)
+    if (IsClosed())
     {
         return 0;
     }
@@ -155,7 +153,7 @@ ssize_t Connection::Flush()
 
 bool Connection::ReadLine(std::string& line, size_t max_line_len)
 {
-    if (closed_)
+    if (IsClosed())
     {
         return false;
     }
@@ -167,7 +165,7 @@ bool Connection::ReadLine(std::string& line, size_t max_line_len)
     }
 
     size_t newline_offset = read_buffer_.FindChar('\n', max_line_len);
-    if (newline_offset == static_cast<size_t>(-1))
+    if (newline_offset == RingBuffer::npos)
     {
         if (readable >= max_line_len)
         {
@@ -220,17 +218,12 @@ bool Connection::IsWritable() const
 
 void Connection::Close()
 {
-    // 用 fd_ 做幂等守卫，而非 closed_
-    // closed_ 表示"对端关闭了连接"，不代表本地 fd 已 close
-    // 若用 closed_ 守卫，Recv 检测到对端关闭后 set closed_=true，
-    // 析构时 Close() 会跳过 ::close(fd_)，导致 fd 泄漏
     if (fd_ >= 0)
     {
         LOG_DEBUG("Connection::Close: fd=%d", fd_);
         ::close(fd_);
         fd_ = -1;
     }
-    closed_ = true;
 }
 
 }  // namespace rtsp_forward

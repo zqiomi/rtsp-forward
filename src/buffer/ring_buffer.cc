@@ -142,7 +142,7 @@ size_t RingBuffer::FindChar(char c, size_t max_search_len) const
 {
     if (readable_size_ == 0)
     {
-        return static_cast<size_t>(-1);
+        return npos;
     }
 
     size_t search_len = max_search_len > 0 ? std::min(max_search_len, readable_size_) : readable_size_;
@@ -165,7 +165,7 @@ size_t RingBuffer::FindChar(char c, size_t max_search_len) const
         }
     }
 
-    return static_cast<size_t>(-1);
+    return npos;
 }
 
 }  // namespace rtsp_forward

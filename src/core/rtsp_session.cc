@@ -1,12 +1,12 @@
 #include "rtsp_session.h"
 
+#include <unistd.h>
+
 #include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <sstream>
-#include <unistd.h>
 
-#include "rtsp_forward.h"
+#include "rtsp_server.h"
 #include "util/log.h"
 
 namespace rtsp_forward
@@ -55,6 +55,8 @@ Status RtspSession::ForwardRtp(const RtpPacket& packet)
     if (is_udp_)
     {
         UdpEndpoint endpoint;
+        // stream_index: 0=RTP, 1=RTCP
+        // 根据 stream_index 选择对应的 UDP socket 和客户端地址
         if (packet.stream_index == 0)
         {
             endpoint.fd = udp_rtp_fd_;
@@ -110,11 +112,13 @@ void RtspSession::Close()
 
     if (udp_rtp_fd_ >= 0)
     {
+        LOG_DEBUG("RtspSession::Close udp_rtp_fd_=%d", udp_rtp_fd_);
         ::close(udp_rtp_fd_);
         udp_rtp_fd_ = -1;
     }
     if (udp_rtcp_fd_ >= 0)
     {
+        LOG_DEBUG("RtspSession::Close udp_rtcp_fd_=%d", udp_rtcp_fd_);
         ::close(udp_rtcp_fd_);
         udp_rtcp_fd_ = -1;
     }
@@ -210,6 +214,17 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
 
         if (udp_rtp_fd_ < 0 || udp_rtcp_fd_ < 0)
         {
+            // 清理已成功创建的 socket，避免资源泄漏
+            if (udp_rtp_fd_ >= 0)
+            {
+                ::close(udp_rtp_fd_);
+                udp_rtp_fd_ = -1;
+            }
+            if (udp_rtcp_fd_ >= 0)
+            {
+                ::close(udp_rtcp_fd_);
+                udp_rtcp_fd_ = -1;
+            }
             LOG_ERROR("RtspSession::HandleSetup: failed to create UDP sockets");
             std::string response = builder_.BuildErrorResponse(request.cseq, 500, "Internal Server Error");
             conn_.Send(response.data(), response.size());
@@ -246,11 +261,12 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
 
         is_udp_ = true;
 
-        LOG_INFO("RtspSession::HandleSetup: UDP setup complete, server_port=%d-%d, client_port=%d-%d",
-                 server_rtp_port, server_rtcp_port, transport.client_rtp_port, transport.client_rtcp_port);
+        LOG_INFO("RtspSession::HandleSetup: UDP setup complete, server_port=%d-%d, client_port=%d-%d", server_rtp_port,
+                 server_rtcp_port, transport.client_rtp_port, transport.client_rtcp_port);
 
-        std::string response = builder_.BuildSetupResponseUdp(request.cseq, session_id_, server_rtp_port, server_rtcp_port,
-                                                               transport.client_rtp_port, transport.client_rtcp_port);
+        std::string response =
+            builder_.BuildSetupResponseUdp(request.cseq, session_id_, server_rtp_port, server_rtcp_port,
+                                           transport.client_rtp_port, transport.client_rtcp_port);
         conn_.Send(response.data(), response.size());
         state_ = RtspSessionState::kSetupSent;
         return Status::Ok();
@@ -349,9 +365,10 @@ std::string RtspSession::GenerateSessionId()
     uint64_t timestamp = static_cast<uint64_t>(ms.count());
     uint64_t seq = server_->NextSessionSequence();
 
-    std::stringstream ss;
-    ss << std::hex << timestamp << std::hex << seq;
-    return ss.str();
+    // 使用 fmt 风格的格式化，避免流状态修改问题
+    char buf[33];
+    snprintf(buf, sizeof(buf), "%lx%lx", timestamp, seq);
+    return std::string(buf);
 }
 
 }  // namespace rtsp_forward

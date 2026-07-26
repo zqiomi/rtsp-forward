@@ -1,4 +1,4 @@
-#include "rtsp_forward.h"
+#include "rtsp_server.h"
 
 #include <sys/timerfd.h>
 #include <unistd.h>
@@ -6,10 +6,10 @@
 #include <memory>
 #include <vector>
 
-#include "../../include/rtsp_forward.h"  // 公共 API 头文件（RtspForwardStats 完整定义）
-#include "../net/connection.h"
-#include "../util/constants.h"
-#include "../util/log.h"
+#include "rtsp_forward.h"
+#include "net/connection.h"
+#include "util/constants.h"
+#include "util/log.h"
 #include "rtsp_session.h"
 
 namespace rtsp_forward
@@ -179,6 +179,8 @@ Status RtspForward::BroadcastRtp(const RtpPacket& packet)
     }
 
     // 短暂持锁，拷贝需要转发的 session 列表
+    // 策略：只在拷贝期间持锁，ForwardRtp 使用 shared_ptr 保证 session 生命周期
+    // ForwardRtp 内部操作（UpdateActivity/发送）都是线程安全的，无需额外锁保护
     std::vector<std::shared_ptr<RtspSession>> playing_sessions;
     {
         std::lock_guard<std::mutex> lock(sessions_mutex_);
@@ -193,12 +195,14 @@ Status RtspForward::BroadcastRtp(const RtpPacket& packet)
         }
     }
 
-    // 释放锁后逐个转发，避免长时间持锁阻塞主线程
+    // 释放锁后逐个转发，避免长时间持锁阻塞主线程（新连接/超时检测）
     for (auto& session : playing_sessions)
     {
         Status status = session->ForwardRtp(packet);
         if (!status.ok())
         {
+            // ResourceExhausted (EAGAIN) 是正常情况，仅记录 WARN 不中断转发
+            // 其他错误则记录日志并继续处理下一个 session
             LOG_WARN("RtspForward::BroadcastRtp: forward failed for session %s", session->session_id().c_str());
             continue;
         }
@@ -381,6 +385,7 @@ void RtspForward::ProcessConnectionData(int fd)
     }
 
     // 循环处理缓冲区中的所有消息（interleaved 帧 + RTSP 请求）
+    // 每次循环要么处理一条完整消息，要么因数据不完整退出等待下次读事件
     while (conn.GetReadBufferSize() > 0)
     {
         // 检测 interleaved 帧（客户端回传 RTCP，以 '$' 0x24 开头）
@@ -405,6 +410,10 @@ void RtspForward::ProcessConnectionData(int fd)
         std::string line;
         bool request_complete = false;
 
+        // ReadLine 返回 false 时退出内层循环：
+        // 1. 缓冲区为空（数据已读完）
+        // 2. 未找到换行符（数据不完整，等待更多数据）
+        // 3. 行过长被截断（安全保护，防止攻击）
         while (conn.ReadLine(line))
         {
             if (line.empty())
@@ -441,7 +450,9 @@ void RtspForward::ProcessConnectionData(int fd)
         }
         else
         {
-            break;  // 数据不完整，等待下次读事件
+            // 数据不完整（无换行符），退出等待下次读事件
+            // 不会空转：ReadLine 在无换行且数据量 < max_line_len 时不消耗数据直接返回 false
+            break;
         }
     }
 }

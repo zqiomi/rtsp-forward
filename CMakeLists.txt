@@ -45,8 +45,8 @@ set(RTSP_FORWARD_SOURCES
     src/protocol/rtsp_builder.cc
     src/rtp/rtp_forwarder.cc
     src/core/rtsp_session.cc
-    src/core/rtsp_forward.cc
-    src/api/rtsp_forward_api.cc
+    src/core/rtsp_server.cc
+    src/api/rtsp_forward.cc
 )
 
 # ===== 动态库 =====

@@ -20,6 +20,7 @@ enum class StatusCode
     kTimeout = -8,
     kLimitExceeded = -9,
     kFailedPrecondition = -10,
+    kResourceExhausted = -11,
 };
 
 // Status 类 - 用于错误处理
@@ -106,6 +107,8 @@ public:
                 return "LimitExceeded: " + message_;
             case StatusCode::kFailedPrecondition:
                 return "FailedPrecondition: " + message_;
+            case StatusCode::kResourceExhausted:
+                return "ResourceExhausted: " + message_;
             default:
                 return "Unknown";
         }
@@ -155,6 +158,10 @@ public:
     static Status FailedPrecondition(const std::string& message = "")
     {
         return Status(StatusCode::kFailedPrecondition, message);
+    }
+    static Status ResourceExhausted(const std::string& message = "")
+    {
+        return Status(StatusCode::kResourceExhausted, message);
     }
 
 private:
