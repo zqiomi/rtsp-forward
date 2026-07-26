@@ -2,11 +2,10 @@
 
 #include <errno.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 
 #include <cstring>
-#include <string>
 
-#include "util/constants.h"
 #include "util/log.h"
 
 namespace rtsp_forward
@@ -115,6 +114,88 @@ ssize_t Connection::Send(const void* data, size_t len)
     return len;
 }
 
+ssize_t Connection::SendV(const struct iovec* iov, int iovcnt, size_t total_len)
+{
+    std::lock_guard<std::mutex> lock(send_mutex_);
+
+    if (IsClosed())
+    {
+        return 0;
+    }
+
+    if (!iov || iovcnt <= 0 || total_len == 0)
+    {
+        return 0;
+    }
+
+    if (write_buffer_.ReadableSize() == 0)
+    {
+        ssize_t ret = ::writev(fd_guard_.fd(), iov, iovcnt);
+        if (ret > 0)
+        {
+            size_t sent = static_cast<size_t>(ret);
+            if (sent < total_len)
+            {
+                size_t remaining = total_len - sent;
+                size_t skip = sent;
+                for (int i = 0; i < iovcnt; ++i)
+                {
+                    if (skip < iov[i].iov_len)
+                    {
+                        const char* p = static_cast<const char*>(iov[i].iov_base) + skip;
+                        size_t n = iov[i].iov_len - skip;
+                        Status st = write_buffer_.Write(p, n);
+                        if (!st.ok())
+                        {
+                            LOG_WARN("Connection::SendV: write buffer full on partial writev, fd=%d", fd_guard_.fd());
+                            return static_cast<ssize_t>(sent);
+                        }
+                        for (int j = i + 1; j < iovcnt; ++j)
+                        {
+                            st = write_buffer_.Write(iov[j].iov_base, iov[j].iov_len);
+                            if (!st.ok())
+                            {
+                                LOG_WARN("Connection::SendV: write buffer full buffering remainder, fd=%d",
+                                         fd_guard_.fd());
+                                return static_cast<ssize_t>(sent);
+                            }
+                        }
+                        break;
+                    }
+                    skip -= iov[i].iov_len;
+                }
+                LOG_TRACE("Connection::SendV: fd=%d, sent=%zu, buffered=%zu", fd_guard_.fd(), sent, remaining);
+            }
+            else
+            {
+                LOG_TRACE("Connection::SendV: fd=%d, sent=%zu", fd_guard_.fd(), total_len);
+            }
+            return static_cast<ssize_t>(total_len);
+        }
+        if (errno != EAGAIN && errno != EWOULDBLOCK)
+        {
+            LOG_ERROR("Connection::SendV failed: %s", strerror(errno));
+            return -1;
+        }
+    }
+
+    for (int i = 0; i < iovcnt; ++i)
+    {
+        if (iov[i].iov_len > 0)
+        {
+            Status status = write_buffer_.Write(iov[i].iov_base, iov[i].iov_len);
+            if (!status.ok())
+            {
+                LOG_WARN("Connection::SendV: write buffer full");
+                return -1;
+            }
+        }
+    }
+
+    LOG_TRACE("Connection::SendV: fd=%d, buffered=%zu", fd_guard_.fd(), total_len);
+    return total_len;
+}
+
 ssize_t Connection::Flush()
 {
     std::lock_guard<std::mutex> lock(send_mutex_);
@@ -124,14 +205,23 @@ ssize_t Connection::Flush()
         return 0;
     }
 
-    size_t contiguous = write_buffer_.ContiguousReadableSize();
-    if (contiguous == 0)
+    struct iovec iov[2];
+    int iovcnt = write_buffer_.GetReadableIoVec(iov);
+    if (iovcnt == 0)
     {
         return 0;
     }
 
-    const char* buf = write_buffer_.ReadPtr();
-    ssize_t ret = ::send(fd_guard_.fd(), buf, contiguous, MSG_NOSIGNAL);
+    ssize_t ret;
+    if (iovcnt == 1)
+    {
+        ret = ::send(fd_guard_.fd(), iov[0].iov_base, iov[0].iov_len, MSG_NOSIGNAL);
+    }
+    else
+    {
+        ret = ::writev(fd_guard_.fd(), iov, iovcnt);
+    }
+
     if (ret < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -142,102 +232,9 @@ ssize_t Connection::Flush()
         return -1;
     }
 
-    write_buffer_.Consume(ret);
+    write_buffer_.Consume(static_cast<size_t>(ret));
     LOG_DEBUG("Connection::Flush: fd=%d, flushed=%zd", fd_guard_.fd(), ret);
     return ret;
-}
-
-bool Connection::ReadLine(std::string& line, size_t max_line_len)
-{
-    if (IsClosed())
-    {
-        return false;
-    }
-
-    size_t readable = read_buffer_.ReadableSize();
-    if (readable == 0)
-    {
-        return false;
-    }
-
-    size_t newline_offset = read_buffer_.FindChar('\n', max_line_len);
-    if (newline_offset == RingBuffer::npos)
-    {
-        if (readable >= max_line_len)
-        {
-            LOG_WARN("Connection::ReadLine: line too long, max=%zu", max_line_len);
-            read_buffer_.Consume(max_line_len);
-        }
-        return false;
-    }
-
-    size_t line_len = newline_offset + 1;
-    char temp_buf[kMaxRtspRequestDataLen];
-    if (line_len > sizeof(temp_buf))
-    {
-        LOG_WARN("Connection::ReadLine: line too long, len=%zu, max=%zu", line_len, sizeof(temp_buf));
-        read_buffer_.Consume(max_line_len);
-        return false;
-    }
-    if (!read_buffer_.Peek(temp_buf, line_len).ok())
-    {
-        return false;
-    }
-    line.assign(temp_buf, line_len);
-
-    if (line.size() >= 1 && line[line.size() - 1] == '\n')
-    {
-        line.resize(line.size() - 1);
-    }
-    if (line.size() >= 1 && line[line.size() - 1] == '\r')
-    {
-        line.resize(line.size() - 1);
-    }
-
-    read_buffer_.Consume(line_len);
-    return true;
-}
-
-bool Connection::ReadLine(const char*& line_ptr, size_t& line_len, size_t max_line_len)
-{
-    if (IsClosed())
-    {
-        return false;
-    }
-
-    size_t readable = read_buffer_.ReadableSize();
-    if (readable == 0)
-    {
-        return false;
-    }
-
-    size_t newline_offset = read_buffer_.FindChar('\n', max_line_len);
-    if (newline_offset == RingBuffer::npos)
-    {
-        if (readable >= max_line_len)
-        {
-            LOG_WARN("Connection::ReadLine: line too long, max=%zu", max_line_len);
-            read_buffer_.Consume(max_line_len);
-        }
-        return false;
-    }
-
-    line_len = newline_offset;
-    line_ptr = read_buffer_.ReadPtr();
-
-    size_t total_len = newline_offset + 1;
-    if (total_len > read_buffer_.ContiguousReadableSize())
-    {
-        return false;
-    }
-
-    if (line_len > 0 && line_ptr[line_len - 1] == '\r')
-    {
-        line_len--;
-    }
-
-    read_buffer_.Consume(total_len);
-    return true;
 }
 
 const char* Connection::GetReadBuffer() const
@@ -253,11 +250,6 @@ size_t Connection::GetReadBufferSize() const
 void Connection::Consume(size_t len)
 {
     read_buffer_.Consume(len);
-}
-
-bool Connection::IsWritable() const
-{
-    return write_buffer_.WritableSize() > 0;
 }
 
 void Connection::Close()

@@ -3,6 +3,7 @@
 
 #include <sys/epoll.h>
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
@@ -52,7 +53,7 @@ private:
     static uint32_t ToEpollEvents(EventType events);
 
     FdGuard epoll_fd_;
-    bool running_;
+    std::atomic<bool> running_;
     std::vector<struct ::epoll_event> events_;
     std::unordered_map<int, EventCallback> callbacks_;
 };

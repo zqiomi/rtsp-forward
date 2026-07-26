@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <sys/uio.h>
 
 #include "util/status.h"
 
@@ -61,6 +62,11 @@ public:
     size_t FindChar(char c, size_t max_search_len = 0) const;
 
     size_t FindSubstring(const char* substr, size_t substr_len, size_t max_search_len = 0) const;
+
+    // 填充 iovec 数组，返回有效条目数（1 或 2）
+    // iov[0] = 从 read_pos_ 起的连续可读段
+    // iov[1] = 环绕到 buffer 开头的剩余段（仅当数据环绕时存在）
+    int GetReadableIoVec(struct iovec* iov) const;
 
     static constexpr size_t npos = static_cast<size_t>(-1);
 

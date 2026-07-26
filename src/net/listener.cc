@@ -33,12 +33,6 @@ Status Listener::Listen(const char* addr, int port)
         return status;
     }
 
-    status = socket_.SetNoSigPipe(true);
-    if (!status.ok())
-    {
-        return status;
-    }
-
     status = socket_.Bind(addr, port);
     if (!status.ok())
     {

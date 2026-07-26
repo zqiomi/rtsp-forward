@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 #include "core/rtsp_server.h"
 #include "util/constants.h"
@@ -84,7 +85,7 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
         session_timeout_sec = config->session_timeout_sec;
     }
 
-    RtspForwardInternal* internal = new RtspForwardInternal();
+    RtspForwardInternal* internal = new (std::nothrow) RtspForwardInternal();
     if (!internal)
     {
         return RTSP_OUT_OF_MEMORY;
@@ -92,7 +93,7 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
 
     // 创建内部实现
     internal->impl =
-        new rtsp_forward::RtspServer(ip, port, max_sessions, buffer_size, connection_timeout_sec, session_timeout_sec);
+        new (std::nothrow) rtsp_forward::RtspServer(ip, port, max_sessions, buffer_size, connection_timeout_sec, session_timeout_sec);
     if (!internal->impl)
     {
         delete internal;

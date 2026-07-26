@@ -52,3 +52,4 @@ Makefile
 compile_commands.json
 demo/.cache
 off
+.qoder/

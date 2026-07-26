@@ -1,12 +1,13 @@
 #include "rtsp_server.h"
 
+#include <netinet/tcp.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 
+#include <cstring>
 #include <memory>
 #include <vector>
 
-#include "net/connection.h"
 #include "rtsp_forward.h"
 #include "rtsp_session.h"
 #include "util/constants.h"
@@ -27,7 +28,8 @@ RtspServer::RtspServer(const std::string& ip, int port, int max_sessions, size_t
       session_timeout_sec_(session_timeout_sec),
       timer_fd_(-1),
       total_connections_(0),
-      timed_out_sessions_(0)
+      timed_out_sessions_(0),
+      total_dropped_sessions_(0)
 {
     LOG_INFO("RtspServer created, ip=%s, port=%d, max_sessions=%d, buffer_size=%zu, conn_timeout=%d, sess_timeout=%d",
              ip_.c_str(), port_, max_sessions_, buffer_size_, connection_timeout_sec_, session_timeout_sec_);
@@ -201,18 +203,34 @@ Status RtspServer::BroadcastRtp(const RtpPacket& packet)
         Status status = session->ForwardRtp(packet);
         if (!status.ok())
         {
+            // 记录丢包，检测慢客户端
+            session->RecordDrop();
+
+            if (session->GetConsecutiveDrops() >= kMaxConsecutiveDrops)
+            {
+                LOG_WARN("RtspServer::BroadcastRtp: slow client detected, session=%s, consecutive_drops=%d, closing",
+                         session->session_id().c_str(), session->GetConsecutiveDrops());
+                total_dropped_sessions_.fetch_add(1, std::memory_order_relaxed);
+                // 不在流线程直接 Close session，避免与 epoll 线程的 ProcessConnectionData/OnWrite 竞态。
+                // 改为设置状态为 kTeardown，由 epoll 线程在下次读事件或超时检查时清理。
+                session->set_state(RtspSessionState::kTeardown);
+                continue;
+            }
+
             // ResourceExhausted (EAGAIN) 是正常情况，仅记录 WARN 不中断转发
             // 其他错误则记录日志并继续处理下一个 session
             LOG_WARN("RtspServer::BroadcastRtp: forward failed for session %s", session->session_id().c_str());
             continue;
         }
 
+        // 发送成功，重置连续丢包计数
+        session->RecordSuccess();
+
         // 如果有数据被缓冲（socket 满导致 EAGAIN），注册 EPOLLOUT 触发 flush
         // 否则缓冲的 RTP 数据不会被发出，客户端会因超时断开重连
-        Connection& conn = session->connection();
-        if (conn.NeedFlush())
+        if (session->NeedFlush())
         {
-            event_loop_.ModifyFd(conn.fd(),
+            event_loop_.ModifyFd(session->fd(),
                                  EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
         }
     }
@@ -230,6 +248,12 @@ void RtspServer::OnNewConnection(int fd)
     {
         LOG_ERROR("RtspServer::OnNewConnection: accept failed");
         return;
+    }
+
+    int tcp_nodelay = 1;
+    if (setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &tcp_nodelay, sizeof(tcp_nodelay)) < 0)
+    {
+        LOG_WARN("RtspServer::OnNewConnection: setsockopt TCP_NODELAY failed: %s", strerror(errno));
     }
 
     // 检查最大会话数限制：超限直接关闭，让客户端立即感知拒绝
@@ -308,15 +332,14 @@ void RtspServer::OnWrite(int fd)
         session = it->second;
     }
 
-    Connection& conn = session->connection();
-    if (conn.IsClosed())
+    if (session->IsClosed())
     {
         CloseConnection(fd);
         return;
     }
 
     // 刷新写缓冲区
-    ssize_t ret = conn.Flush();
+    ssize_t ret = session->Flush();
     if (ret < 0)
     {
         LOG_ERROR("RtspServer::OnWrite: flush failed, fd=%d", fd);
@@ -325,7 +348,7 @@ void RtspServer::OnWrite(int fd)
     }
 
     // 如果缓冲区已清空，移除写事件
-    if (!conn.NeedFlush())
+    if (!session->NeedFlush())
     {
         event_loop_.ModifyFd(fd, EventType::kRead);
     }
@@ -367,9 +390,7 @@ void RtspServer::ProcessConnectionData(int fd)
         session = it->second;
     }
 
-    Connection& conn = session->connection();
-
-    if (conn.IsClosed())
+    if (session->IsClosed())
     {
         LOG_ERROR("RtspServer::ProcessConnectionData: connection is closed, fd=%d", fd);
         CloseConnection(fd);
@@ -377,7 +398,7 @@ void RtspServer::ProcessConnectionData(int fd)
     }
 
     // 先接收数据到缓冲区
-    ssize_t ret = conn.Recv();
+    ssize_t ret = session->Recv();
     if (ret < 0)
     {
         LOG_ERROR("RtspServer::ProcessConnectionData: recv failed, fd=%d", fd);
@@ -392,28 +413,28 @@ void RtspServer::ProcessConnectionData(int fd)
     }
 
     // 循环处理缓冲区中的所有消息（interleaved 帧 + RTSP 请求）
-    while (conn.GetReadBufferSize() > 0)
+    while (session->GetReadBufferSize() > 0)
     {
         uint8_t header[4];
-        if (conn.Peek(header, 4).ok() && header[0] == 0x24)
+        if (session->Peek(header, 4).ok() && header[0] == 0x24)
         {
             uint16_t frame_len = static_cast<uint16_t>((header[2] << 8) | header[3]);
             size_t total = static_cast<size_t>(4) + frame_len;
-            if (conn.GetReadBufferSize() < total)
+            if (session->GetReadBufferSize() < total)
             {
                 break;
             }
             LOG_TRACE("RtspServer::ProcessConnectionData: skip interleaved frame, fd=%d, channel=%d, len=%d", fd,
                       header[1], frame_len);
-            conn.Consume(total);
+            session->Consume(total);
             continue;
         }
 
         // 零拷贝：直接在 RingBuffer 上查找请求结束符 \r\n\r\n
-        size_t request_end = conn.FindSubstring("\r\n\r\n", 4);
+        size_t request_end = session->FindSubstring("\r\n\r\n", 4);
         if (request_end == RingBuffer::npos)
         {
-            if (conn.GetReadBufferSize() >= kMaxRtspRequestDataLen)
+            if (session->GetReadBufferSize() >= kMaxRtspRequestDataLen)
             {
                 LOG_WARN("RtspServer::ProcessConnectionData: request too large, fd=%d", fd);
                 CloseConnection(fd);
@@ -423,12 +444,12 @@ void RtspServer::ProcessConnectionData(int fd)
         }
 
         size_t request_len = request_end + 4;
-        if (request_len > conn.GetReadBufferSize())
+        if (request_len > session->GetReadBufferSize())
         {
             break;
         }
 
-        const char* request_ptr = conn.GetReadBuffer();
+        const char* request_ptr = session->GetReadBuffer();
         LOG_DEBUG("RtspServer::ProcessConnectionData: complete request, fd=%d, size=%zu", fd, request_len);
 
         Status process_status = session->ProcessData(request_ptr, request_len);
@@ -438,9 +459,9 @@ void RtspServer::ProcessConnectionData(int fd)
                      process_status.ToString().c_str());
         }
 
-        conn.Consume(request_len);
+        session->Consume(request_len);
 
-        if (conn.NeedFlush())
+        if (session->NeedFlush())
         {
             event_loop_.ModifyFd(
                 fd, EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
@@ -462,6 +483,12 @@ void RtspServer::CheckTimeouts()
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         for (auto& pair : sessions_)
         {
+            // 清理被 BroadcastRtp 标记为 kTeardown 的慢客户端
+            if (pair.second->state() == RtspSessionState::kTeardown)
+            {
+                timed_out_fds.push_back(pair.first);
+                continue;
+            }
             if (pair.second->IsTimedOut(connection_timeout_sec_, session_timeout_sec_))
             {
                 timed_out_fds.push_back(pair.first);
@@ -507,6 +534,7 @@ void RtspServer::GetInfo(RtspForwardInfo* info)
     info->playing_sessions = playing;
     info->total_connections = total_connections_.load(std::memory_order_relaxed);
     info->timed_out_sessions = timed_out_sessions_.load(std::memory_order_relaxed);
+    info->dropped_sessions = total_dropped_sessions_.load(std::memory_order_relaxed);
     info->uptime_sec = static_cast<uint64_t>(uptime.count());
 }
 

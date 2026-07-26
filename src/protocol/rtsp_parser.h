@@ -89,9 +89,6 @@ public:
 private:
     // 解析请求行
     Status ParseRequestLine(const std::string& line, RtspRequest& request);
-
-    // 解析头部
-    Status ParseHeaders(const std::vector<std::string>& lines, RtspRequest& request);
 };
 
 }  // namespace rtsp_forward

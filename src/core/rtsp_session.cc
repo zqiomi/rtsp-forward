@@ -210,10 +210,10 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
             return Status::InvalidArgument("UDP without client_port");
         }
 
-        int rtp_fd = CreateUdpSocket(0);
-        int rtcp_fd = CreateUdpSocket(0);
+        FdGuard rtp_fd_guard(CreateUdpSocket(0));
+        FdGuard rtcp_fd_guard(CreateUdpSocket(0));
 
-        if (rtp_fd < 0 || rtcp_fd < 0)
+        if (!rtp_fd_guard.IsValid() || !rtcp_fd_guard.IsValid())
         {
             LOG_ERROR("RtspSession::HandleSetup: failed to create UDP sockets");
             std::string response = builder_.BuildErrorResponse(request.cseq, 500, "Internal Server Error");
@@ -221,8 +221,8 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
             return Status::NetworkError("failed to create UDP sockets");
         }
 
-        udp_rtp_fd_.Reset(rtp_fd);
-        udp_rtcp_fd_.Reset(rtcp_fd);
+        udp_rtp_fd_.Reset(rtp_fd_guard.Release());
+        udp_rtcp_fd_.Reset(rtcp_fd_guard.Release());
 
         int server_rtp_port = 0;
         int server_rtcp_port = 0;

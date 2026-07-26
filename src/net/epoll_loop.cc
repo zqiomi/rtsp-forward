@@ -38,7 +38,7 @@ Status EpollLoop::Init()
 
     epoll_fd_.Reset(fd);
     events_.resize(kEpollEventsSize);
-    running_ = true;
+    running_.store(true, std::memory_order_release);
     LOG_DEBUG("EpollLoop initialized, epoll_fd=%d", fd);
     return Status::Ok();
 }
@@ -178,10 +178,10 @@ void EpollLoop::Run()
         return;
     }
 
-    running_ = true;
+    running_.store(true, std::memory_order_release);
     LOG_INFO("EpollLoop::Run: entering event loop");
 
-    while (running_)
+    while (running_.load(std::memory_order_acquire))
     {
         std::vector<EventResult> results;
         int nfds = Wait(kEpollWaitTimeoutMs, results);
@@ -193,9 +193,11 @@ void EpollLoop::Run()
 
         for (const auto& result : results)
         {
+            // 回调可能修改 callbacks_（如 RemoveFd），先检查存在性再调用
             auto it = callbacks_.find(result.fd);
             if (it != callbacks_.end())
             {
+                // 拷贝回调，防止回调内部 RemoveFd 导致引用失效
                 EventCallback cb = it->second;
                 EventType type = static_cast<EventType>(result.events);
                 cb(result.fd, type, result);
@@ -208,7 +210,7 @@ void EpollLoop::Run()
 
 void EpollLoop::Stop()
 {
-    running_ = false;
+    running_.store(false, std::memory_order_release);
     LOG_DEBUG("EpollLoop::Stop: stopping event loop");
 }
 

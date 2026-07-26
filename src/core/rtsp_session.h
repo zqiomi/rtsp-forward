@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include <sys/uio.h>
 
 #include "net/connection.h"
 #include "net/fd_guard.h"
@@ -41,14 +42,35 @@ public:
     RtspSession(RtspSession&&) = delete;
     RtspSession& operator=(RtspSession&&) = delete;
 
-    Connection& connection()
-    {
-        return conn_;
-    }
-    const Connection& connection() const
-    {
-        return conn_;
-    }
+    // ===== Connection 包装接口（供 RtspServer 调用）=====
+
+    int fd() const { return conn_.fd(); }
+    bool IsClosed() const { return conn_.IsClosed(); }
+
+    // 接收数据
+    ssize_t Recv() { return conn_.Recv(); }
+
+    // 刷新写缓冲
+    ssize_t Flush() { return conn_.Flush(); }
+
+    // 发送数据
+    ssize_t Send(const void* data, size_t len) { return conn_.Send(data, len); }
+    ssize_t SendV(const struct iovec* iov, int iovcnt, size_t total_len) { return conn_.SendV(iov, iovcnt, total_len); }
+
+    // 读缓冲区操作
+    const char* GetReadBuffer() const { return conn_.GetReadBuffer(); }
+    size_t GetReadBufferSize() const { return conn_.GetReadBufferSize(); }
+    void Consume(size_t len) { conn_.Consume(len); }
+    Status Peek(void* data, size_t size) const { return conn_.Peek(data, size); }
+    size_t FindSubstring(const char* substr, size_t substr_len) const { return conn_.FindSubstring(substr, substr_len); }
+
+    // 背压控制
+    void RecordDrop() { conn_.RecordDrop(); }
+    void RecordSuccess() { conn_.RecordSuccess(); }
+    int GetConsecutiveDrops() { return conn_.GetConsecutiveDrops(); }
+    bool NeedFlush() { return conn_.NeedFlush(); }
+
+    // ===== 状态与会话信息 =====
 
     RtspSessionState state() const
     {
@@ -90,6 +112,10 @@ private:
     std::atomic<RtspSessionState> state_;
 
     std::string session_id_;
+    // 以下静态成员均为无状态工具类实例，内部无可变状态，线程安全：
+    // - RtspParser::Parse 为纯解析函数，不修改 parser 自身
+    // - RtspBuilder::Build* 为纯构建函数，不修改 builder 自身
+    // - RtpForwarder::Forward* 为纯转发函数，不修改 forwarder 自身
     static RtspParser parser_;
     static RtspBuilder builder_;
     static RtpForwarder rtp_forwarder_;

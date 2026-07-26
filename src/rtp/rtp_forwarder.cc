@@ -1,7 +1,9 @@
 #include "rtp_forwarder.h"
 
 #include <cstring>
+#include <sys/uio.h>
 
+#include "net/connection.h"
 #include "util/constants.h"
 #include "util/log.h"
 
@@ -26,12 +28,16 @@ Status RtpForwarder::ForwardTcp(Connection* conn, const RtpPacket& packet)
         return Status::InvalidArgument("packet too large");
     }
 
-    thread_local uint8_t frame_buffer[kMaxRtpPacketSize + 4];
-    size_t total_len = 4 + packet.len;
-    BuildInterleavedHeader(frame_buffer, packet.stream_index, packet.len);
-    memcpy(frame_buffer + 4, packet.data, packet.len);
+    uint8_t header[4];
+    BuildInterleavedHeader(header, packet.stream_index, packet.len);
 
-    ssize_t ret = conn->Send(frame_buffer, total_len);
+    struct iovec iov[2];
+    iov[0].iov_base = header;
+    iov[0].iov_len = 4;
+    iov[1].iov_base = const_cast<uint8_t*>(packet.data);
+    iov[1].iov_len = packet.len;
+
+    ssize_t ret = conn->SendV(iov, 2, 4 + packet.len);
     if (ret < 0)
     {
         LOG_ERROR("RtpForwarder::ForwardTcp: send failed");

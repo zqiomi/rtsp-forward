@@ -24,14 +24,9 @@ public:
     Status Create(int domain, int type, int protocol);
     Status SetReuseAddr(bool enable);
     Status SetNonBlocking(bool enable);
-    Status SetNoSigPipe(bool enable);
-    Status SetTcpNoDelay(bool enable);
     Status Bind(const char* addr, int port);
     Status Listen(int backlog);
     int Accept(struct sockaddr_in* addr);
-    Status Connect(const char* addr, int port);
-    ssize_t Send(const void* data, size_t len);
-    ssize_t Recv(void* buf, size_t len);
     void Close();
 
     int fd() const

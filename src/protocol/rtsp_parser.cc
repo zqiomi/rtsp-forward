@@ -155,48 +155,6 @@ Status RtspParser::ParseRequestLine(const std::string& line, RtspRequest& reques
     return Status::Ok();
 }
 
-Status RtspParser::ParseHeaders(const std::vector<std::string>& lines, RtspRequest& request)
-{
-    for (const std::string& line : lines)
-    {
-        size_t colon_pos = line.find(':');
-        if (colon_pos == std::string::npos)
-        {
-            continue;
-        }
-
-        std::string key = line.substr(0, colon_pos);
-        std::string value = line.substr(colon_pos + 1);
-
-        key = Trim(key);
-        value = Trim(value);
-
-        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
-
-        if (key == "cseq")
-        {
-            char* end_ptr = nullptr;
-            long val = std::strtol(value.c_str(), &end_ptr, 10);
-            if (end_ptr != value.c_str() && *end_ptr == '\0')
-            {
-                request.cseq = static_cast<int>(val);
-            }
-            else
-            {
-                request.cseq = 0;
-            }
-        }
-        else if (key == "transport")
-        {
-            request.transport = ParseTransport(value);
-        }
-
-        request.headers[key] = value;
-    }
-
-    return Status::Ok();
-}
-
 TransportInfo RtspParser::ParseTransport(const std::string& transport_str)
 {
     TransportInfo info;

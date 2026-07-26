@@ -89,6 +89,7 @@ typedef struct RtspForwardInfo
     int playing_sessions;        /**< 当前播放中会话数 */
     uint64_t total_connections;  /**< 累计连接数 */
     uint64_t timed_out_sessions; /**< 因超时关闭的会话数 */
+    uint64_t dropped_sessions;   /**< 因写缓冲区满（慢客户端）关闭的会话数 */
     uint64_t uptime_sec;         /**< 服务器运行时长（秒） */
 } RtspForwardInfo;
 

@@ -20,29 +20,29 @@ namespace rtsp_forward
 static constexpr const char* kDefaultBindIp = "0.0.0.0";
 
 /** 默认监听端口 */
-static const int kDefaultPort = 554;
+static constexpr int kDefaultPort = 554;
 
 /** 默认最大并发会话数 */
-static const int kDefaultMaxSessions = 10;
+static constexpr int kDefaultMaxSessions = 10;
 
 /** 默认每个连接的缓冲区大小（字节） */
-static const size_t kDefaultBufferSize = 65536;
+static constexpr size_t kDefaultBufferSize = 65536;
 
 /** listen() 的 backlog 参数 */
-static const int kListenBacklog = 128;
+static constexpr int kListenBacklog = 128;
 
 // ===== epoll 配置 =====
 
 /** epoll 事件数组初始大小 */
-static const int kEpollEventsSize = 64;
+static constexpr int kEpollEventsSize = 64;
 
 /** epoll_wait 超时时间（毫秒） */
-static const int kEpollWaitTimeoutMs = 1000;
+static constexpr int kEpollWaitTimeoutMs = 1000;
 
 // ===== RTSP 协议常量 =====
 
 /** RTSP 信令请求最大长度  */
-static const size_t kMaxRtspRequestDataLen = 4096;
+static constexpr size_t kMaxRtspRequestDataLen = 4096;
 
 /** RTSP 协议版本字符串 */
 static constexpr const char* kRtspVersion = "RTSP/1.0";
@@ -63,27 +63,32 @@ static constexpr const char* kContentTypeText = "text/plain";
 // ===== RTP 常量 =====
 
 /** RTP interleaved frame 标识符（'$'） */
-static const uint8_t kRtpInterleavedMarker = '$';
+static constexpr uint8_t kRtpInterleavedMarker = '$';
 
 /** 默认 RTP 通道号 */
-static const int kDefaultRtpChannel = 0;
+static constexpr int kDefaultRtpChannel = 0;
 
 /** 默认 RTCP 通道号 */
-static const int kDefaultRtcpChannel = 1;
+static constexpr int kDefaultRtcpChannel = 1;
 
 /** 最大 RTP 包大小（字节），基于以太网 MTU 1500，留有余量 */
-static const size_t kMaxRtpPacketSize = 2048;
+static constexpr size_t kMaxRtpPacketSize = 2048;
 
 // ===== 超时配置 =====
 
 /** 默认连接空闲超时（秒），适用于握手未完成的会话，0=不超时 */
-static const int kDefaultConnectionTimeoutSec = 30;
+static constexpr int kDefaultConnectionTimeoutSec = 30;
 
 /** 默认会话空闲超时（秒），适用于已建立的会话，0=不超时 */
-static const int kDefaultSessionTimeoutSec = 60;
+static constexpr int kDefaultSessionTimeoutSec = 60;
 
 /** 超时检查间隔（秒），timerfd 触发周期 */
-static const int kTimeoutCheckIntervalSec = 1;
+static constexpr int kTimeoutCheckIntervalSec = 1;
+
+// ===== 背压配置 =====
+
+/** 连续丢包上限：超过此值认为客户端过慢，主动断开 */
+static constexpr int kMaxConsecutiveDrops = 100;
 
 }  // namespace rtsp_forward
 

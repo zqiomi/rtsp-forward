@@ -7,11 +7,18 @@ project(rtsp_forward
 # ===== 编译选项 =====
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# 默认调试模式：开启 -g 与 AddressSanitizer
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -fno-exceptions -g -fno-omit-frame-pointer")
-# set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-# set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# 默认调试模式：开启 -g 与 AddressSanitizer
+set(CMAKE_CXX_FLAGS_DEBUG "-Wall -Wextra -Werror -fno-exceptions -g -fno-omit-frame-pointer")
+# Release模式：优化编译，去除调试符号
+set(CMAKE_CXX_FLAGS_RELEASE "-Wall -Wextra -Werror -fno-exceptions -O2 -DNDEBUG")
+# Release with Debug Info：优化编译但保留调试符号
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-Wall -Wextra -Werror -fno-exceptions -O2 -g -DNDEBUG")
+
+# AddressSanitizer（仅Debug模式）
+# set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
+# set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
 
 # ===== 构建选项 =====
 option(BUILD_SHARED_LIBS "构建动态库" ON)
@@ -101,6 +108,18 @@ if(BUILD_DEMO)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()
+
+# ===== CPack 打包配置 =====
+set(CPACK_PACKAGE_NAME "rtsp_forward")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_DESCRIPTION})
+set(CPACK_PACKAGE_CONTACT "zqiomi@gmail.com")
+set(CPACK_PACKAGE_VENDOR "rtsp_forward")
+
+set(CPACK_GENERATOR "TGZ")
+set(CPACK_SOURCE_GENERATOR "TGZ")
+
+include(CPack)
 
 # ===== 安装摘要 =====
 message(STATUS "========== rtsp_forward ${PROJECT_VERSION} ==========")

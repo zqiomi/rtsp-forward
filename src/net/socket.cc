@@ -3,7 +3,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <netinet/tcp.h>
 
 #include <cstring>
 
@@ -81,31 +80,6 @@ Status Socket::SetNonBlocking(bool enable)
     }
 
     LOG_DEBUG("Socket::SetNonBlocking: fd=%d, enable=%d", fd_guard_.fd(), enable);
-    return Status::Ok();
-}
-
-Status Socket::SetNoSigPipe(bool enable)
-{
-    (void)enable;
-    return Status::Ok();
-}
-
-Status Socket::SetTcpNoDelay(bool enable)
-{
-    if (!fd_guard_.IsValid())
-    {
-        return Status::Error("socket not created");
-    }
-
-    int opt = enable ? 1 : 0;
-    int ret = setsockopt(fd_guard_.fd(), IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
-    if (ret < 0)
-    {
-        LOG_ERROR("setsockopt TCP_NODELAY failed: %s", strerror(errno));
-        return Status::NetworkError("setsockopt TCP_NODELAY failed");
-    }
-
-    LOG_DEBUG("Socket::SetTcpNoDelay: fd=%d, enable=%d", fd_guard_.fd(), enable);
     return Status::Ok();
 }
 
@@ -194,103 +168,6 @@ int Socket::Accept(struct sockaddr_in* addr)
     LOG_DEBUG("Socket::Accept: client_fd=%d, ip=%s, port=%d", client_fd, ip, ntohs(client_addr.sin_port));
 
     return client_fd;
-}
-
-Status Socket::Connect(const char* addr, int port)
-{
-    if (!fd_guard_.IsValid())
-    {
-        return Status::Error("socket not created");
-    }
-
-    struct sockaddr_in sock_addr;
-    memset(&sock_addr, 0, sizeof(sock_addr));
-    sock_addr.sin_family = AF_INET;
-    sock_addr.sin_port = htons(port);
-
-    if (inet_pton(AF_INET, addr, &sock_addr.sin_addr) <= 0)
-    {
-        LOG_ERROR("inet_pton failed: %s", strerror(errno));
-        return Status::InvalidArgument("invalid address");
-    }
-
-    int ret = connect(fd_guard_.fd(), reinterpret_cast<struct sockaddr*>(&sock_addr), sizeof(sock_addr));
-    if (ret < 0)
-    {
-        if (errno == EINPROGRESS)
-        {
-            return Status::Ok();
-        }
-        LOG_ERROR("connect() failed: %s", strerror(errno));
-        return Status::NetworkError("connect() failed");
-    }
-
-    LOG_DEBUG("Socket::Connect: fd=%d, addr=%s, port=%d", fd_guard_.fd(), addr, port);
-    return Status::Ok();
-}
-
-ssize_t Socket::Send(const void* data, size_t len)
-{
-    if (!fd_guard_.IsValid())
-    {
-        LOG_ERROR("socket not created");
-        return -1;
-    }
-
-    if (!data || len == 0)
-    {
-        return 0;
-    }
-
-    ssize_t ret = send(fd_guard_.fd(), data, len, MSG_NOSIGNAL);
-    if (ret < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            return 0;
-        }
-        if (errno == EPIPE)
-        {
-            LOG_ERROR("send() EPIPE: connection closed");
-            return -1;
-        }
-        LOG_ERROR("send() failed: %s", strerror(errno));
-        return -1;
-    }
-
-    return ret;
-}
-
-ssize_t Socket::Recv(void* buf, size_t len)
-{
-    if (!fd_guard_.IsValid())
-    {
-        LOG_ERROR("socket not created");
-        return -1;
-    }
-
-    if (!buf || len == 0)
-    {
-        return 0;
-    }
-
-    ssize_t ret = recv(fd_guard_.fd(), buf, len, 0);
-    if (ret < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            return 0;
-        }
-        LOG_ERROR("recv() failed: %s", strerror(errno));
-        return -1;
-    }
-
-    if (ret == 0)
-    {
-        LOG_DEBUG("Socket::Recv: fd=%d, connection closed", fd_guard_.fd());
-    }
-
-    return ret;
 }
 
 void Socket::Close()

@@ -125,7 +125,7 @@ void RingBuffer::Consume(size_t size)
 {
     if (size > readable_size_)
     {
-        LOG_WARN("RingBuffer::Consume: size exceeds readable size");
+        LOG_ERROR("RingBuffer::Consume: size(%zu) exceeds readable(%zu), clamping", size, readable_size_);
         size = readable_size_;
     }
 
@@ -137,7 +137,7 @@ void RingBuffer::Produce(size_t size)
 {
     if (size > WritableSize())
     {
-        LOG_WARN("RingBuffer::Produce: size exceeds writable size");
+        LOG_ERROR("RingBuffer::Produce: size(%zu) exceeds writable(%zu), clamping", size, WritableSize());
         size = WritableSize();
     }
 
@@ -212,6 +212,28 @@ size_t RingBuffer::FindSubstring(const char* substr, size_t substr_len, size_t m
     }
 
     return npos;
+}
+
+int RingBuffer::GetReadableIoVec(struct iovec* iov) const
+{
+    if (readable_size_ == 0 || !iov)
+    {
+        return 0;
+    }
+
+    size_t contiguous = ContiguousReadableSize();
+    iov[0].iov_base = buffer_.get() + read_pos_;
+    iov[0].iov_len = contiguous;
+
+    size_t remaining = readable_size_ - contiguous;
+    if (remaining > 0)
+    {
+        iov[1].iov_base = buffer_.get();
+        iov[1].iov_len = remaining;
+        return 2;
+    }
+
+    return 1;
 }
 
 }  // namespace rtsp_forward

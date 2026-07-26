@@ -213,6 +213,7 @@ private:
     std::chrono::steady_clock::time_point start_time_;  // 服务器启动时间
     std::atomic<uint64_t> total_connections_;           // 累计连接数
     std::atomic<uint64_t> timed_out_sessions_;          // 因超时关闭的会话数
+    std::atomic<uint64_t> total_dropped_sessions_;      // 因写缓冲区满关闭的慢会话数
 };
 
 }  // namespace rtsp_forward

@@ -51,6 +51,13 @@ public:
         }
     }
 
+    int Release()
+    {
+        int fd = fd_;
+        fd_ = -1;
+        return fd;
+    }
+
     int fd() const
     {
         return fd_;
