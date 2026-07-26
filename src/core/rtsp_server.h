@@ -83,6 +83,7 @@ public:
      */
     void SetSdp(const std::string& sdp)
     {
+        std::lock_guard<std::mutex> lock(sdp_mutex_);
         sdp_ = sdp;
     }
 
@@ -91,8 +92,9 @@ public:
      *
      * @return const std::string& SDP字符串
      */
-    const std::string& GetSdp() const
+    std::string GetSdp() const
     {
+        std::lock_guard<std::mutex> lock(sdp_mutex_);
         return sdp_;
     }
 
@@ -175,11 +177,12 @@ private:
     // 检查并清理超时会话（由 timerfd 周期触发）
     void CheckTimeouts();
 
-    bool running_;
+    std::atomic<bool> running_;
     int port_;
     int max_sessions_;
     size_t buffer_size_;
     std::string sdp_;
+    mutable std::mutex sdp_mutex_;  // 保护 sdp_ 的线程安全
     std::string ip_;
     uint64_t session_sequence_;
     EpollLoop event_loop_;
@@ -192,7 +195,7 @@ private:
     int session_timeout_sec_;     // 会话阶段超时（秒），0=不超时
     int timer_fd_;                // timerfd，用于周期性超时检查
 
-    // 统计计数器（原子操作，保证多线程安全）
+    // 统计（start_time_ 仅在 Start() 中设置一次，之后只读，无数据竞争）
     std::chrono::steady_clock::time_point start_time_;  // 服务器启动时间
     std::atomic<uint64_t> total_connections_;           // 累计连接数
     std::atomic<uint64_t> timed_out_sessions_;          // 因超时关闭的会话数

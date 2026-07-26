@@ -84,8 +84,8 @@ bool RtspSession::IsTimedOut(int connection_timeout_sec, int session_timeout_sec
 {
     // 根据会话状态选择对应的超时阈值
     int timeout_sec = 0;
-    if (state_ == RtspSessionState::kInit || state_ == RtspSessionState::kOptionsSent ||
-        state_ == RtspSessionState::kDescribeSent)
+    if (state() == RtspSessionState::kInit || state() == RtspSessionState::kOptionsSent ||
+        state() == RtspSessionState::kDescribeSent)
     {
         timeout_sec = connection_timeout_sec;
     }
@@ -108,7 +108,7 @@ bool RtspSession::IsTimedOut(int connection_timeout_sec, int session_timeout_sec
 
 void RtspSession::Close()
 {
-    state_ = RtspSessionState::kTeardown;
+    set_state(RtspSessionState::kTeardown);
 
     if (udp_rtp_fd_ >= 0)
     {
@@ -159,7 +159,7 @@ Status RtspSession::HandleOptions(const RtspRequest& request)
     LOG_DEBUG("RtspSession::HandleOptions");
     std::string response = builder_.BuildOptionsResponse(request.cseq);
     conn_.Send(response.data(), response.size());
-    state_ = RtspSessionState::kOptionsSent;
+    set_state(RtspSessionState::kOptionsSent);
     return Status::Ok();
 }
 
@@ -180,7 +180,7 @@ Status RtspSession::HandleDescribe(const RtspRequest& request)
 
     std::string response = builder_.BuildDescribeResponse(request.cseq, sdp);
     conn_.Send(response.data(), response.size());
-    state_ = RtspSessionState::kDescribeSent;
+    set_state(RtspSessionState::kDescribeSent);
     return Status::Ok();
 }
 
@@ -268,7 +268,7 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
             builder_.BuildSetupResponseUdp(request.cseq, session_id_, server_rtp_port, server_rtcp_port,
                                            transport.client_rtp_port, transport.client_rtcp_port);
         conn_.Send(response.data(), response.size());
-        state_ = RtspSessionState::kSetupSent;
+        set_state(RtspSessionState::kSetupSent);
         return Status::Ok();
     }
 
@@ -277,7 +277,7 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
         LOG_INFO("RtspSession::HandleSetup: TCP interleaved transport requested");
         std::string response = builder_.BuildSetupResponse(request.cseq, session_id_);
         conn_.Send(response.data(), response.size());
-        state_ = RtspSessionState::kSetupSent;
+        set_state(RtspSessionState::kSetupSent);
         return Status::Ok();
     }
 
@@ -325,7 +325,7 @@ Status RtspSession::HandlePlay(const RtspRequest& request)
     url_ = request.url;
     std::string response = builder_.BuildPlayResponse(request.cseq, session_id_);
     conn_.Send(response.data(), response.size());
-    state_ = RtspSessionState::kPlaying;
+    set_state(RtspSessionState::kPlaying);
     LOG_INFO("RtspSession::HandlePlay: session %s started playing", session_id_.c_str());
     return Status::Ok();
 }
@@ -344,7 +344,7 @@ Status RtspSession::HandlePause(const RtspRequest& request)
     LOG_DEBUG("RtspSession::HandlePause");
     std::string response = builder_.BuildSimpleResponse(request.cseq, session_id_);
     conn_.Send(response.data(), response.size());
-    state_ = RtspSessionState::kPaused;
+    set_state(RtspSessionState::kPaused);
     return Status::Ok();
 }
 

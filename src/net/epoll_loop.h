@@ -14,6 +14,7 @@ namespace rtsp_forward
 {
 
 // EpollLoop - epoll 实现（Linux）
+// 注意：非线程安全，所有接口必须在事件循环线程（即 Run() 所在线程）中调用
 class EpollLoop : public EventLoop
 {
 public:

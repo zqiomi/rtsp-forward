@@ -28,6 +28,7 @@ struct EventResult
 typedef std::function<void(int fd, EventType type, EventResult result)> EventCallback;
 
 // EventLoop 抽象接口
+// 注意：非线程安全，所有接口必须在事件循环线程中调用
 class EventLoop
 {
 public:

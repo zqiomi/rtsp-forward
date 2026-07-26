@@ -56,7 +56,13 @@ public:
     // 获取会话状态
     RtspSessionState state() const
     {
-        return state_;
+        return state_.load(std::memory_order_acquire);
+    }
+
+    // 设置会话状态
+    void set_state(RtspSessionState state)
+    {
+        state_.store(state, std::memory_order_release);
     }
 
     // 获取会话 ID
@@ -101,14 +107,14 @@ private:
 
     RtspForward* server_;
     Connection conn_;
-    RtspSessionState state_;
+    std::atomic<RtspSessionState> state_;
     std::string session_id_;
     RtspParser parser_;
     RtspBuilder builder_;
     RtpForwarder rtp_forwarder_;
     std::string url_;
     std::string transport_;
-    bool is_udp_;
+    std::atomic<bool> is_udp_;
     int udp_rtp_fd_;
     int udp_rtcp_fd_;
     struct sockaddr_in client_rtp_addr_;

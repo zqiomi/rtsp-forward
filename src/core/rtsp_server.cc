@@ -272,6 +272,7 @@ void RtspForward::OnNewConnection(int fd)
     if (!status.ok())
     {
         LOG_ERROR("RtspForward::OnNewConnection: add client fd failed, status=%s", status.ToString().c_str());
+        ::close(client_fd);
         return;
     }
 
@@ -408,6 +409,7 @@ void RtspForward::ProcessConnectionData(int fd)
         // 解析 RTSP 请求（以空行 \r\n\r\n 结尾）
         std::string request_data;
         std::string line;
+        request_data.reserve(1024);  // 预分配减少扩容
         bool request_complete = false;
 
         // ReadLine 返回 false 时退出内层循环：

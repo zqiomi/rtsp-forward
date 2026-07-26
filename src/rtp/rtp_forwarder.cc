@@ -23,12 +23,17 @@ Status RtpForwarder::ForwardTcp(Connection* conn, const RtpPacket& packet)
 
     // 构建 interleaved frame: $ + channel(1) + length(2, big-endian) + RTP data
     // 合并为单次写入，避免头和数据被分到不同 flush 周期导致帧错乱
+    // 使用 thread_local 缓冲区复用，避免每次分配
+    thread_local std::vector<uint8_t> frame_buffer;
     size_t total_len = 4 + packet.len;
-    std::vector<uint8_t> frame(total_len);
-    BuildInterleavedHeader(frame.data(), packet.stream_index, packet.len);
-    memcpy(frame.data() + 4, packet.data, packet.len);
+    if (frame_buffer.size() < total_len)
+    {
+        frame_buffer.resize(total_len + 1024);  // 多分配一点，减少扩容次数
+    }
+    BuildInterleavedHeader(frame_buffer.data(), packet.stream_index, packet.len);
+    memcpy(frame_buffer.data() + 4, packet.data, packet.len);
 
-    ssize_t ret = conn->Send(frame.data(), total_len);
+    ssize_t ret = conn->Send(frame_buffer.data(), total_len);
     if (ret < 0)
     {
         LOG_ERROR("RtpForwarder::ForwardTcp: send failed");

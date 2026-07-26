@@ -1,11 +1,13 @@
 # rtsp_forward
 
-轻量级 RTSP 转发库，支持一个输入多路转发。
+[English Version](README_EN.md) | 中文版
+
+rtsp_forward 是一个高性能的轻量级 RTSP 转发库，实现一个输入多路转发功能：外部输入 RTP 包，同时透传到多个 RTSP 客户端。。
 
 ## 功能特性
 
 - **RTSP 协议支持**: OPTIONS、DESCRIBE、SETUP、PLAY、PAUSE、TEARDOWN、GET_PARAMETER、SET_PARAMETER
-- **传输模式**: TCP interleaved / UDP（V1.2新增）
+- **传输模式**: TCP interleaved / UDP
 - **一个输入，多路转发**: 外部输入 RTP 包，同时透传到多个 RTSP 客户端
 - **纯 C 接口**: 兼容 C/C++ 调用
 - **双线程模型**: 主线程事件循环 + 码流输入线程
@@ -14,39 +16,48 @@
 - **日志级别控制**: TRACE/DEBUG/INFO/WARN/ERROR/FATAL
 - **高性能**: 环形缓冲区、零拷贝设计、避免不必要的内存分配
 
-## 架构设计
+## 运行架构
 
+```mermaid
+flowchart LR
+    %% 上层：数据链路（单向转发）
+    IN[RTP 数据输入<br/>API 调用 / 网络接收]
+    FWD[码流线程<br/>BroadcastRtp 广播分发]
+
+    %% 右侧：客户端集群
+    subgraph Clients [RTSP 播放客户端]
+        C1[客户端 1]
+        C2[客户端 2]
+        CN[客户端 N]
+    end
+
+    %% 下层：信令链路（双向交互）
+    MAIN[主线程<br/>epoll 循环 · RTSP 信令处理]
+
+    %% 数据流向（上层通路）
+    IN --> FWD
+    FWD --> C1
+    FWD --> C2
+    FWD --> CN
+
+    %% 信令交互（下层通路）
+    C1 <--> MAIN
+    C2 <--> MAIN
+    CN <--> MAIN
+
+    %% 样式配色
+    classDef data fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
+    classDef ctrl fill:#fff3e0,stroke:#f57c00,color:#e65100
+    classDef client fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
+
+    class IN,FWD data
+    class MAIN ctrl
+    class C1,C2,CN,Clients client
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         C API 层                                    │
-│  rtsp_forward_create / destroy / start / stop / send_rtp / ...      │
-│  纯C接口，不透明指针管理，线程安全                                    │
-└──────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                      Server 核心层                                  │
-│  RtspForward ──→ 管理事件循环和 Session 生命周期                     │
-│  RtspSession ──→ RTSP 会话管理、状态机、请求处理                     │
-└──────────────────────────────────────────────────────────────────────┘
-                                  │
-        ┌─────────────────────────┼─────────────────────────┐
-        ▼                         ▼                         ▼
-┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐
-│    网络工具层      │   │    协议层          │   │    RTP层          │
-│  EpollLoop        │   │  RtspParser       │   │  RtpForwarder     │
-│  Socket           │   │  RtspBuilder      │   │  RtpPacket        │
-│  Connection       │   │                   │   │                   │
-│  Listener         │   │                   │   │                   │
-└───────────────────┘   └───────────────────┘   └───────────────────┘
-        │
-        ▼
-┌───────────────────┐
-│    缓冲区层        │
-│  RingBuffer       │
-│  环形缓冲区实现    │
-└───────────────────┘
-```
+
+**双线程模型：**
+- **主线程**：运行 epoll 事件循环，处理 RTSP 信令（OPTIONS/DESCRIBE/SETUP/PLAY）和客户端连接
+- **码流线程**：接收外部 RTP 输入，通过 `BroadcastRtp` 同时转发给所有播放中的客户端
 
 ## 编译
 
@@ -213,14 +224,6 @@ typedef struct RtspForwardInfo {
 | `rtsp_forward_send_rtp` | ✅ | 线程安全，可在码流输入线程调用 |
 | `rtsp_forward_set_sdp` | ✅ | 线程安全，建议在码流线程中调用以实现动态更新 |
 | `rtsp_forward_get_info` | ✅ | 可在任意线程调用 |
-
-## 版本历史
-
-| 版本 | 功能 |
-| :--- | :--- |
-| V1.0 | 基础功能：RTSP协议处理、RTP透传(TCP)、C API、双线程模型 |
-| V1.1 | 统计信息、超时机制、资源管理优化 |
-| V1.2 | UDP传输支持、错误处理优化、日志级别控制、ReadLine性能优化 |
 
 ## 目录结构
 
