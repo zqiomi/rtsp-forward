@@ -109,12 +109,14 @@ int main(int argc, char* argv[])
     RtspForwardConfig config = {
         .port = port,
         .ip = "0.0.0.0",
-        .max_sessions = 2,
+        .max_sessions = 16,
         .buffer_size = 65536,
         .sdp_content = NULL,
         .connection_timeout_sec = 30,
         .session_timeout_sec = 60,
     };
+
+    rtsp_forward_set_log_level(RtspLogLevel::RTSP_LOG_DEBUG);
 
     int ret = rtsp_forward_create(&g_server, &config);
     if (ret != RTSP_OK)

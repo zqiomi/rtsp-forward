@@ -384,6 +384,12 @@ void RtspServer::ProcessConnectionData(int fd)
         CloseConnection(fd);
         return;
     }
+    if (ret == 0)
+    {
+        LOG_DEBUG("RtspServer::ProcessConnectionData: peer closed, fd=%d", fd);
+        CloseConnection(fd);
+        return;
+    }
 
     // 循环处理缓冲区中的所有消息（interleaved 帧 + RTSP 请求）
     while (conn.GetReadBufferSize() > 0)
