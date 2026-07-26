@@ -11,7 +11,7 @@
 
 #include "net/epoll_loop.h"
 #include "net/listener.h"
-#include "rtp/rtp_packet.h"
+#include "rtp/rtp_forwarder.h"
 #include "util/status.h"
 
 // 前向声明公共 API 信息结构体（C 头文件定义）
@@ -23,7 +23,7 @@ namespace rtsp_forward
 class RtspSession;
 
 // RTSP 转发核心类
-class RtspForward
+class RtspServer
 {
 public:
     /**
@@ -36,15 +36,15 @@ public:
      * @param connection_timeout_sec 连接空闲超时（秒），0=不超时
      * @param session_timeout_sec 会话空闲超时（秒），0=不超时
      */
-    RtspForward(const std::string& ip, int port, int max_sessions, size_t buffer_size, int connection_timeout_sec,
-                int session_timeout_sec);
-    ~RtspForward();
+    RtspServer(const std::string& ip, int port, int max_sessions, size_t buffer_size, int connection_timeout_sec,
+               int session_timeout_sec);
+    ~RtspServer();
 
     // 禁止拷贝和移动
-    RtspForward(const RtspForward&) = delete;
-    RtspForward& operator=(const RtspForward&) = delete;
-    RtspForward(RtspForward&&) = delete;
-    RtspForward& operator=(RtspForward&&) = delete;
+    RtspServer(const RtspServer&) = delete;
+    RtspServer& operator=(const RtspServer&) = delete;
+    RtspServer(RtspServer&&) = delete;
+    RtspServer& operator=(RtspServer&&) = delete;
 
     /**
      * @brief 启动服务器
@@ -103,9 +103,19 @@ public:
      *
      * @return bool true表示正在运行
      */
-    bool is_running() const
+    bool IsRunning() const
     {
-        return running_;
+        return running_.load();
+    }
+
+    /**
+     * @brief 设置服务器运行状态
+     *
+     * @return bool true表示正在运行
+     */
+    void SetRunning(bool running)
+    {
+        running_.store(running);
     }
 
     /**
@@ -177,16 +187,20 @@ private:
     // 检查并清理超时会话（由 timerfd 周期触发）
     void CheckTimeouts();
 
-    std::atomic<bool> running_;
     int port_;
     int max_sessions_;
     size_t buffer_size_;
-    std::string sdp_;
-    mutable std::mutex sdp_mutex_;  // 保护 sdp_ 的线程安全
+
     std::string ip_;
     uint64_t session_sequence_;
     EpollLoop event_loop_;
     Listener listener_;
+
+    std::atomic<bool> running_;
+
+    std::string sdp_;
+    mutable std::mutex sdp_mutex_;  // 保护 sdp_ 的线程安全
+
     std::map<int, std::shared_ptr<RtspSession>> sessions_;
     std::mutex sessions_mutex_;  // 保护 sessions_ 容器的线程安全
 

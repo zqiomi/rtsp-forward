@@ -1,17 +1,17 @@
+#include "rtsp_forward.h"
+
 #include <cstdio>
 #include <cstring>
 
 #include "core/rtsp_server.h"
-#include "util/log.h"
-#include "rtp/rtp_packet.h"
-#include "rtsp_forward.h"
 #include "util/constants.h"
+#include "util/log.h"
 #include "version.h"  // CMake 生成，含版本号宏
 
 // 内部服务器结构体
 struct RtspForwardInternal
 {
-    rtsp_forward::RtspForward* impl;
+    rtsp_forward::RtspServer* impl;
 };
 
 extern "C"
@@ -92,7 +92,7 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
 
     // 创建内部实现
     internal->impl =
-        new rtsp_forward::RtspForward(ip, port, max_sessions, buffer_size, connection_timeout_sec, session_timeout_sec);
+        new rtsp_forward::RtspServer(ip, port, max_sessions, buffer_size, connection_timeout_sec, session_timeout_sec);
     if (!internal->impl)
     {
         delete internal;
@@ -142,7 +142,7 @@ int rtsp_forward_start(void* server)
     }
 
     // 检查是否已启动
-    if (internal->impl->is_running())
+    if (internal->impl->IsRunning())
     {
         return RTSP_ALREADY_STARTED;
     }
@@ -180,7 +180,7 @@ int rtsp_forward_stop(void* server)
     }
 
     // 检查是否已停止
-    if (!internal->impl->is_running())
+    if (!internal->impl->IsRunning())
     {
         return RTSP_NOT_STARTED;
     }
@@ -204,7 +204,7 @@ int rtsp_forward_run(void* server)
     }
 
     // 检查是否已启动
-    if (!internal->impl->is_running())
+    if (!internal->impl->IsRunning())
     {
         return RTSP_NOT_STARTED;
     }
@@ -228,7 +228,7 @@ int rtsp_forward_send_rtp(void* server, const uint8_t* data, size_t len, int str
     }
 
     // 检查是否已启动
-    if (!internal->impl->is_running())
+    if (!internal->impl->IsRunning())
     {
         return RTSP_NOT_STARTED;
     }

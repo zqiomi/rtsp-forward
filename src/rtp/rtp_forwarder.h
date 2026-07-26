@@ -1,15 +1,22 @@
 #ifndef RTSP_FORWARD_RTP_FORWARDER_H_
 #define RTSP_FORWARD_RTP_FORWARDER_H_
 
-#include <cstring>
 #include <netinet/in.h>
 
+#include <cstring>
+
 #include "net/connection.h"
-#include "rtp_packet.h"
 #include "util/status.h"
 
 namespace rtsp_forward
 {
+
+struct RtpPacket
+{
+    const uint8_t* data;  // RTP包数据指针（已包含完整RTP头）
+    size_t len;           // RTP包长度
+    int stream_index;     // 流索引: 0=RTP, 1=RTCP
+};
 
 struct UdpEndpoint
 {

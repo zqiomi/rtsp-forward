@@ -1,13 +1,14 @@
 #ifndef RTSP_FORWARD_RTSP_SESSION_H_
 #define RTSP_FORWARD_RTSP_SESSION_H_
 
-#include <atomic>
-#include <chrono>
-#include <cstdint>
 #include <netinet/in.h>
+
+#include <atomic>
+#include <cstdint>
 #include <string>
 
 #include "net/connection.h"
+#include "net/fd_guard.h"
 #include "protocol/rtsp_builder.h"
 #include "protocol/rtsp_parser.h"
 #include "rtp/rtp_forwarder.h"
@@ -16,34 +17,30 @@
 namespace rtsp_forward
 {
 
-// RTSP 会话状态枚举
 enum class RtspSessionState
 {
-    kInit,          // 初始状态
-    kOptionsSent,   // OPTIONS 已发送
-    kDescribeSent,  // DESCRIBE 已发送
-    kSetupSent,     // SETUP 已发送
-    kPlaying,       // 播放中
-    kPaused,        // 已暂停
-    kTeardown       // 已关闭
+    kInit,
+    kOptionsSent,
+    kDescribeSent,
+    kSetupSent,
+    kPlaying,
+    kPaused,
+    kTeardown
 };
 
-// RTSP 会话管理类
-class RtspForward;
+class RtspServer;
 
 class RtspSession
 {
 public:
-    RtspSession(RtspForward* server, int fd, size_t buffer_size);
+    RtspSession(RtspServer* server, int fd, size_t buffer_size);
     ~RtspSession();
 
-    // 禁止拷贝和移动
     RtspSession(const RtspSession&) = delete;
     RtspSession& operator=(const RtspSession&) = delete;
     RtspSession(RtspSession&&) = delete;
     RtspSession& operator=(RtspSession&&) = delete;
 
-    // 获取连接
     Connection& connection()
     {
         return conn_;
@@ -53,43 +50,26 @@ public:
         return conn_;
     }
 
-    // 获取会话状态
     RtspSessionState state() const
     {
         return state_.load(std::memory_order_acquire);
     }
 
-    // 设置会话状态
     void set_state(RtspSessionState state)
     {
         state_.store(state, std::memory_order_release);
     }
 
-    // 获取会话 ID
     const std::string& session_id() const
     {
         return session_id_;
     }
 
-    // 处理接收到的数据
     Status ProcessData(const std::string& data);
-
-    // 透传 RTP 包
+    Status ProcessData(const char* data, size_t len);
     Status ForwardRtp(const RtpPacket& packet);
-
-    // 关闭会话
     void Close();
-
-    /**
-     * @brief 检查会话是否已超时
-     *
-     * @param connection_timeout_sec 连接阶段超时（秒），适用于握手未完成的会话
-     * @param session_timeout_sec 会话阶段超时（秒），适用于已建立的会话
-     * @return bool true表示已超时
-     */
     bool IsTimedOut(int connection_timeout_sec, int session_timeout_sec) const;
-
-    // 更新活动时间（收到 RTSP 请求或转发 RTP 时调用）
     void UpdateActivity();
 
 private:
@@ -105,18 +85,21 @@ private:
 
     int CreateUdpSocket(int port);
 
-    RtspForward* server_;
+    RtspServer* server_;
     Connection conn_;
     std::atomic<RtspSessionState> state_;
+
     std::string session_id_;
-    RtspParser parser_;
-    RtspBuilder builder_;
-    RtpForwarder rtp_forwarder_;
+    static RtspParser parser_;
+    static RtspBuilder builder_;
+    static RtpForwarder rtp_forwarder_;
+
     std::string url_;
     std::string transport_;
+
     std::atomic<bool> is_udp_;
-    int udp_rtp_fd_;
-    int udp_rtcp_fd_;
+    FdGuard udp_rtp_fd_;
+    FdGuard udp_rtcp_fd_;
     struct sockaddr_in client_rtp_addr_;
     struct sockaddr_in client_rtcp_addr_;
 

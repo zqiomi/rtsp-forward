@@ -60,6 +60,8 @@ public:
     // 未找到返回 npos
     size_t FindChar(char c, size_t max_search_len = 0) const;
 
+    size_t FindSubstring(const char* substr, size_t substr_len, size_t max_search_len = 0) const;
+
     static constexpr size_t npos = static_cast<size_t>(-1);
 
 private:

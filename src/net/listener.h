@@ -40,12 +40,6 @@ public:
     // 关闭监听
     void Close();
 
-    // 是否有效
-    bool IsValid() const
-    {
-        return socket_.IsValid();
-    }
-
 private:
     Socket socket_;
 };

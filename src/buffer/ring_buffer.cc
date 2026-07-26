@@ -1,5 +1,6 @@
 #include "ring_buffer.h"
 
+#include <cstdlib>
 #include <cstring>
 
 #include "util/log.h"
@@ -10,7 +11,13 @@ namespace rtsp_forward
 RingBuffer::RingBuffer(size_t capacity)
     : capacity_(capacity > 0 ? capacity : 1), read_pos_(0), write_pos_(0), readable_size_(0)
 {
-    buffer_ = std::unique_ptr<char[]>(new char[capacity_]);
+    char* buf = new (std::nothrow) char[capacity_];
+    if (!buf)
+    {
+        LOG_FATAL("RingBuffer: memory allocation failed, capacity=%zu", capacity_);
+        std::abort();
+    }
+    buffer_ = std::unique_ptr<char[]>(buf);
     LOG_DEBUG("RingBuffer[%p] created, capacity=%zu", this, capacity_);
 }
 
@@ -162,6 +169,45 @@ size_t RingBuffer::FindChar(char c, size_t max_search_len) const
         if (found)
         {
             return contiguous + (found - buf);
+        }
+    }
+
+    return npos;
+}
+
+size_t RingBuffer::FindSubstring(const char* substr, size_t substr_len, size_t max_search_len) const
+{
+    if (readable_size_ == 0 || !substr || substr_len == 0)
+    {
+        return npos;
+    }
+
+    size_t search_len = max_search_len > 0 ? std::min(max_search_len, readable_size_) : readable_size_;
+    if (search_len < substr_len)
+    {
+        return npos;
+    }
+
+    const char* buf = buffer_.get();
+
+    for (size_t i = 0; i <= search_len - substr_len; ++i)
+    {
+        size_t pos = (read_pos_ + i) % capacity_;
+        bool match = true;
+
+        for (size_t j = 0; j < substr_len; ++j)
+        {
+            size_t char_pos = (pos + j) % capacity_;
+            if (buf[char_pos] != substr[j])
+            {
+                match = false;
+                break;
+            }
+        }
+
+        if (match)
+        {
+            return i;
         }
     }
 

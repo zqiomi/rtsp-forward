@@ -12,14 +12,16 @@
 namespace rtsp_forward
 {
 
-RtspSession::RtspSession(RtspForward* server, int fd, size_t buffer_size)
+RtpForwarder RtspSession::rtp_forwarder_;
+RtspParser RtspSession::parser_;
+RtspBuilder RtspSession::builder_;
+
+RtspSession::RtspSession(RtspServer* server, int fd, size_t buffer_size)
     : server_(server),
       conn_(fd, buffer_size),
       state_(RtspSessionState::kInit),
       session_id_(GenerateSessionId()),
       is_udp_(false),
-      udp_rtp_fd_(-1),
-      udp_rtcp_fd_(-1),
       last_activity_sec_(0)
 {
     memset(&client_rtp_addr_, 0, sizeof(client_rtp_addr_));
@@ -36,9 +38,14 @@ RtspSession::~RtspSession()
 
 Status RtspSession::ProcessData(const std::string& data)
 {
+    return ProcessData(data.c_str(), data.size());
+}
+
+Status RtspSession::ProcessData(const char* data, size_t len)
+{
     UpdateActivity();
     RtspRequest request;
-    Status status = parser_.Parse(data, request);
+    Status status = parser_.Parse(data, len, request);
     if (!status.ok())
     {
         LOG_ERROR("RtspSession::ProcessData: parse failed, status=%s", status.ToString().c_str());
@@ -55,16 +62,14 @@ Status RtspSession::ForwardRtp(const RtpPacket& packet)
     if (is_udp_)
     {
         UdpEndpoint endpoint;
-        // stream_index: 0=RTP, 1=RTCP
-        // 根据 stream_index 选择对应的 UDP socket 和客户端地址
         if (packet.stream_index == 0)
         {
-            endpoint.fd = udp_rtp_fd_;
+            endpoint.fd = udp_rtp_fd_.fd();
             endpoint.addr = client_rtp_addr_;
         }
         else
         {
-            endpoint.fd = udp_rtcp_fd_;
+            endpoint.fd = udp_rtcp_fd_.fd();
             endpoint.addr = client_rtcp_addr_;
         }
         return rtp_forwarder_.ForwardUdp(endpoint, packet);
@@ -82,7 +87,6 @@ void RtspSession::UpdateActivity()
 
 bool RtspSession::IsTimedOut(int connection_timeout_sec, int session_timeout_sec) const
 {
-    // 根据会话状态选择对应的超时阈值
     int timeout_sec = 0;
     if (state() == RtspSessionState::kInit || state() == RtspSessionState::kOptionsSent ||
         state() == RtspSessionState::kDescribeSent)
@@ -110,18 +114,17 @@ void RtspSession::Close()
 {
     set_state(RtspSessionState::kTeardown);
 
-    if (udp_rtp_fd_ >= 0)
+    if (udp_rtp_fd_.IsValid())
     {
-        LOG_DEBUG("RtspSession::Close udp_rtp_fd_=%d", udp_rtp_fd_);
-        ::close(udp_rtp_fd_);
-        udp_rtp_fd_ = -1;
+        LOG_DEBUG("RtspSession::Close udp_rtp_fd=%d", udp_rtp_fd_.fd());
     }
-    if (udp_rtcp_fd_ >= 0)
+    udp_rtp_fd_.Close();
+
+    if (udp_rtcp_fd_.IsValid())
     {
-        LOG_DEBUG("RtspSession::Close udp_rtcp_fd_=%d", udp_rtcp_fd_);
-        ::close(udp_rtcp_fd_);
-        udp_rtcp_fd_ = -1;
+        LOG_DEBUG("RtspSession::Close udp_rtcp_fd=%d", udp_rtcp_fd_.fd());
     }
+    udp_rtcp_fd_.Close();
 }
 
 Status RtspSession::HandleRequest(const RtspRequest& request)
@@ -168,11 +171,9 @@ Status RtspSession::HandleDescribe(const RtspRequest& request)
     LOG_DEBUG("RtspSession::HandleDescribe");
     url_ = request.url;
 
-    // 从服务器获取 SDP 内容
     const std::string& sdp = server_->GetSdp();
     if (sdp.empty())
     {
-        // SDP 未设置，返回错误
         std::string response = builder_.BuildErrorResponse(request.cseq, 500, "SDP not configured");
         conn_.Send(response.data(), response.size());
         return Status::FailedPrecondition("SDP not configured");
@@ -209,27 +210,19 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
             return Status::InvalidArgument("UDP without client_port");
         }
 
-        udp_rtp_fd_ = CreateUdpSocket(0);
-        udp_rtcp_fd_ = CreateUdpSocket(0);
+        int rtp_fd = CreateUdpSocket(0);
+        int rtcp_fd = CreateUdpSocket(0);
 
-        if (udp_rtp_fd_ < 0 || udp_rtcp_fd_ < 0)
+        if (rtp_fd < 0 || rtcp_fd < 0)
         {
-            // 清理已成功创建的 socket，避免资源泄漏
-            if (udp_rtp_fd_ >= 0)
-            {
-                ::close(udp_rtp_fd_);
-                udp_rtp_fd_ = -1;
-            }
-            if (udp_rtcp_fd_ >= 0)
-            {
-                ::close(udp_rtcp_fd_);
-                udp_rtcp_fd_ = -1;
-            }
             LOG_ERROR("RtspSession::HandleSetup: failed to create UDP sockets");
             std::string response = builder_.BuildErrorResponse(request.cseq, 500, "Internal Server Error");
             conn_.Send(response.data(), response.size());
             return Status::NetworkError("failed to create UDP sockets");
         }
+
+        udp_rtp_fd_.Reset(rtp_fd);
+        udp_rtcp_fd_.Reset(rtcp_fd);
 
         int server_rtp_port = 0;
         int server_rtcp_port = 0;
@@ -237,13 +230,13 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
         struct sockaddr_in addr;
 
         memset(&addr, 0, sizeof(addr));
-        if (getsockname(udp_rtp_fd_, reinterpret_cast<struct sockaddr*>(&addr), &len) == 0)
+        if (getsockname(udp_rtp_fd_.fd(), reinterpret_cast<struct sockaddr*>(&addr), &len) == 0)
         {
             server_rtp_port = ntohs(addr.sin_port);
         }
 
         memset(&addr, 0, sizeof(addr));
-        if (getsockname(udp_rtcp_fd_, reinterpret_cast<struct sockaddr*>(&addr), &len) == 0)
+        if (getsockname(udp_rtcp_fd_.fd(), reinterpret_cast<struct sockaddr*>(&addr), &len) == 0)
         {
             server_rtcp_port = ntohs(addr.sin_port);
         }
@@ -351,7 +344,6 @@ Status RtspSession::HandlePause(const RtspRequest& request)
 Status RtspSession::HandleParameter(const RtspRequest& request)
 {
     LOG_DEBUG("RtspSession::HandleParameter: %s", RtspParser::MethodToString(request.method).c_str());
-    // GET_PARAMETER / SET_PARAMETER 用作心跳保活，直接返回 200 OK
     std::string response = builder_.BuildSimpleResponse(request.cseq, session_id_);
     conn_.Send(response.data(), response.size());
     return Status::Ok();
@@ -359,13 +351,11 @@ Status RtspSession::HandleParameter(const RtspRequest& request)
 
 std::string RtspSession::GenerateSessionId()
 {
-    // 时间戳 + 服务器实例内递增序列号
     auto now = std::chrono::system_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
     uint64_t timestamp = static_cast<uint64_t>(ms.count());
     uint64_t seq = server_->NextSessionSequence();
 
-    // 使用 fmt 风格的格式化，避免流状态修改问题
     char buf[33];
     snprintf(buf, sizeof(buf), "%lx%lx", timestamp, seq);
     return std::string(buf);

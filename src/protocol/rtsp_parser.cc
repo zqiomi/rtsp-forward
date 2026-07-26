@@ -1,9 +1,11 @@
 #include "rtsp_parser.h"
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <vector>
 
+#include "util/constants.h"
 #include "util/log.h"
 
 namespace rtsp_forward
@@ -19,16 +21,21 @@ static std::string Trim(const std::string& str)
     return result;
 }
 
-Status RtspParser::Parse(const std::string& data, RtspRequest& request)
+Status RtspParser::Parse(const char* data, size_t len, RtspRequest& request)
 {
-    if (data.empty())
+    if (!data || len == 0)
     {
         return Status::InvalidArgument("empty data");
     }
 
-    LOG_TRACE("Parse '%s'", data.c_str());
+    if (len > kMaxRtspRequestDataLen)
+    {
+        LOG_ERROR("RtspParser::Parse: request too large, size=%zu, max=%zu", len, kMaxRtspRequestDataLen);
+        return Status::ParseError("request too large");
+    }
 
-    // 清空请求结构
+    LOG_TRACE("Parse '%.*s'", static_cast<int>(len), data);
+
     request.method = RtspMethod::kUnknown;
     request.url.clear();
     request.version.clear();
@@ -36,58 +43,89 @@ Status RtspParser::Parse(const std::string& data, RtspRequest& request)
     request.headers.clear();
     request.body.clear();
 
-    // 按行分割
-    std::vector<std::string> lines;
-    std::stringstream ss(data);
-    std::string line;
-    bool in_body = false;
+    const char* pos = data;
+    const char* end = data + len;
 
-    while (std::getline(ss, line))
+    bool in_body = false;
+    bool request_line_parsed = false;
+
+    while (pos < end)
     {
-        // 处理 \r\n
-        if (!line.empty() && line.back() == '\r')
+        const char* newline = reinterpret_cast<const char*>(memchr(pos, '\n', end - pos));
+        if (!newline)
         {
-            line.pop_back();
+            break;
         }
 
-        // 空行表示头部结束，后面是 body
-        if (line.empty() && !in_body)
+        size_t line_len = newline - pos;
+        if (line_len > 0 && pos[line_len - 1] == '\r')
+        {
+            line_len--;
+        }
+
+        if (line_len == 0 && !in_body)
         {
             in_body = true;
+            pos = newline + 1;
             continue;
         }
 
         if (in_body)
         {
-            request.body += line + "\n";
+            request.body.append(pos, line_len);
+            request.body += "\n";
         }
         else
         {
-            lines.push_back(line);
+            if (!request_line_parsed)
+            {
+                Status status = ParseRequestLine(std::string(pos, line_len), request);
+                if (!status.ok())
+                {
+                    return status;
+                }
+                request_line_parsed = true;
+            }
+            else
+            {
+                std::string line(pos, line_len);
+                size_t colon_pos = line.find(':');
+                if (colon_pos != std::string::npos)
+                {
+                    std::string key = line.substr(0, colon_pos);
+                    std::string value = line.substr(colon_pos + 1);
+                    key = Trim(key);
+                    value = Trim(value);
+                    std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+
+                    if (key == "cseq")
+                    {
+                        char* end_ptr = nullptr;
+                        long val = std::strtol(value.c_str(), &end_ptr, 10);
+                        if (end_ptr != value.c_str() && *end_ptr == '\0')
+                        {
+                            request.cseq = static_cast<int>(val);
+                        }
+                        else
+                        {
+                            request.cseq = 0;
+                        }
+                    }
+                    else if (key == "transport")
+                    {
+                        request.transport = ParseTransport(value);
+                    }
+                    request.headers[key] = value;
+                }
+            }
         }
+
+        pos = newline + 1;
     }
 
-    // 至少需要请求行
-    if (lines.empty())
+    if (!request_line_parsed)
     {
         return Status::ParseError("missing request line");
-    }
-
-    // 解析请求行
-    Status status = ParseRequestLine(lines[0], request);
-    if (!status.ok())
-    {
-        return status;
-    }
-
-    // 解析头部
-    if (lines.size() > 1)
-    {
-        status = ParseHeaders(std::vector<std::string>(lines.begin() + 1, lines.end()), request);
-        if (!status.ok())
-        {
-            return status;
-        }
     }
 
     LOG_DEBUG("RtspParser::Parse: method=%s, url=%s", MethodToString(request.method).c_str(), request.url.c_str());

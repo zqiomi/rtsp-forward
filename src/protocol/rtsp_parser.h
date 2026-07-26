@@ -75,6 +75,7 @@ public:
 
     // 解析 RTSP 请求
     Status Parse(const std::string& data, RtspRequest& request);
+    Status Parse(const char* data, size_t len, RtspRequest& request);
 
     // 解析方法字符串
     RtspMethod ParseMethod(const std::string& method_str);

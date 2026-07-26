@@ -41,6 +41,9 @@ static const int kEpollWaitTimeoutMs = 1000;
 
 // ===== RTSP 协议常量 =====
 
+/** RTSP 信令请求最大长度  */
+static const size_t kMaxRtspRequestDataLen = 4096;
+
 /** RTSP 协议版本字符串 */
 static constexpr const char* kRtspVersion = "RTSP/1.0";
 
@@ -67,6 +70,9 @@ static const int kDefaultRtpChannel = 0;
 
 /** 默认 RTCP 通道号 */
 static const int kDefaultRtcpChannel = 1;
+
+/** 最大 RTP 包大小（字节），基于以太网 MTU 1500，留有余量 */
+static const size_t kMaxRtpPacketSize = 2048;
 
 // ===== 超时配置 =====
 

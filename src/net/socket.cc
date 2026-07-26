@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/tcp.h>
-#include <unistd.h>
 
 #include <cstring>
 
@@ -13,41 +12,35 @@
 namespace rtsp_forward
 {
 
-Socket::Socket() : fd_(-1) {}
-
-Socket::~Socket()
-{
-    Close();
-}
-
 Status Socket::Create(int domain, int type, int protocol)
 {
-    if (fd_ >= 0)
+    if (fd_guard_.IsValid())
     {
-        LOG_WARN("Socket already created, fd=%d", fd_);
+        LOG_WARN("Socket already created, fd=%d", fd_guard_.fd());
         Close();
     }
 
-    fd_ = socket(domain, type, protocol);
-    if (fd_ < 0)
+    int fd = socket(domain, type, protocol);
+    if (fd < 0)
     {
         LOG_ERROR("socket() failed: %s", strerror(errno));
         return Status::NetworkError("socket() failed");
     }
 
-    LOG_DEBUG("Socket::Create: fd=%d", fd_);
+    fd_guard_.Reset(fd);
+    LOG_DEBUG("Socket::Create: fd=%d", fd);
     return Status::Ok();
 }
 
 Status Socket::SetReuseAddr(bool enable)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         return Status::Error("socket not created");
     }
 
     int opt = enable ? 1 : 0;
-    int ret = setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    int ret = setsockopt(fd_guard_.fd(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     if (ret < 0)
     {
         LOG_ERROR("setsockopt SO_REUSEADDR failed: %s", strerror(errno));
@@ -59,12 +52,12 @@ Status Socket::SetReuseAddr(bool enable)
 
 Status Socket::SetNonBlocking(bool enable)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         return Status::Error("socket not created");
     }
 
-    int flags = fcntl(fd_, F_GETFL, 0);
+    int flags = fcntl(fd_guard_.fd(), F_GETFL, 0);
     if (flags < 0)
     {
         LOG_ERROR("fcntl F_GETFL failed: %s", strerror(errno));
@@ -80,47 +73,45 @@ Status Socket::SetNonBlocking(bool enable)
         flags &= ~O_NONBLOCK;
     }
 
-    int ret = fcntl(fd_, F_SETFL, flags);
+    int ret = fcntl(fd_guard_.fd(), F_SETFL, flags);
     if (ret < 0)
     {
         LOG_ERROR("fcntl F_SETFL failed: %s", strerror(errno));
         return Status::NetworkError("fcntl F_SETFL failed");
     }
 
-    LOG_DEBUG("Socket::SetNonBlocking: fd=%d, enable=%d", fd_, enable);
+    LOG_DEBUG("Socket::SetNonBlocking: fd=%d, enable=%d", fd_guard_.fd(), enable);
     return Status::Ok();
 }
 
 Status Socket::SetNoSigPipe(bool enable)
 {
-    // Linux 上不支持 SO_NOSIGPIPE，使用 MSG_NOSIGNAL 标志替代
-    // 在 send 方法中已经使用了 MSG_NOSIGNAL
     (void)enable;
     return Status::Ok();
 }
 
 Status Socket::SetTcpNoDelay(bool enable)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         return Status::Error("socket not created");
     }
 
     int opt = enable ? 1 : 0;
-    int ret = setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+    int ret = setsockopt(fd_guard_.fd(), IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
     if (ret < 0)
     {
         LOG_ERROR("setsockopt TCP_NODELAY failed: %s", strerror(errno));
         return Status::NetworkError("setsockopt TCP_NODELAY failed");
     }
 
-    LOG_DEBUG("Socket::SetTcpNoDelay: fd=%d, enable=%d", fd_, enable);
+    LOG_DEBUG("Socket::SetTcpNoDelay: fd=%d, enable=%d", fd_guard_.fd(), enable);
     return Status::Ok();
 }
 
 Status Socket::Bind(const char* addr, int port)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         return Status::Error("socket not created");
     }
@@ -143,38 +134,38 @@ Status Socket::Bind(const char* addr, int port)
         }
     }
 
-    int ret = bind(fd_, reinterpret_cast<struct sockaddr*>(&sock_addr), sizeof(sock_addr));
+    int ret = bind(fd_guard_.fd(), reinterpret_cast<struct sockaddr*>(&sock_addr), sizeof(sock_addr));
     if (ret < 0)
     {
         LOG_ERROR("bind() failed: %s", strerror(errno));
         return Status::NetworkError("bind() failed");
     }
 
-    LOG_DEBUG("Socket::Bind: fd=%d, addr=%s, port=%d", fd_, addr, port);
+    LOG_DEBUG("Socket::Bind: fd=%d, addr=%s, port=%d", fd_guard_.fd(), addr, port);
     return Status::Ok();
 }
 
 Status Socket::Listen(int backlog)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         return Status::Error("socket not created");
     }
 
-    int ret = listen(fd_, backlog);
+    int ret = listen(fd_guard_.fd(), backlog);
     if (ret < 0)
     {
         LOG_ERROR("listen() failed: %s", strerror(errno));
         return Status::NetworkError("listen() failed");
     }
 
-    LOG_DEBUG("Socket::Listen: fd=%d, backlog=%d", fd_, backlog);
+    LOG_DEBUG("Socket::Listen: fd=%d, backlog=%d", fd_guard_.fd(), backlog);
     return Status::Ok();
 }
 
 int Socket::Accept(struct sockaddr_in* addr)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         LOG_ERROR("socket not created");
         return -1;
@@ -182,7 +173,7 @@ int Socket::Accept(struct sockaddr_in* addr)
 
     struct sockaddr_in client_addr;
     socklen_t addr_len = sizeof(client_addr);
-    int client_fd = accept(fd_, reinterpret_cast<struct sockaddr*>(&client_addr), &addr_len);
+    int client_fd = accept(fd_guard_.fd(), reinterpret_cast<struct sockaddr*>(&client_addr), &addr_len);
     if (client_fd < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -193,7 +184,6 @@ int Socket::Accept(struct sockaddr_in* addr)
         return -1;
     }
 
-    // 如果调用者需要地址信息，则拷贝
     if (addr != nullptr)
     {
         *addr = client_addr;
@@ -208,7 +198,7 @@ int Socket::Accept(struct sockaddr_in* addr)
 
 Status Socket::Connect(const char* addr, int port)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         return Status::Error("socket not created");
     }
@@ -224,7 +214,7 @@ Status Socket::Connect(const char* addr, int port)
         return Status::InvalidArgument("invalid address");
     }
 
-    int ret = connect(fd_, reinterpret_cast<struct sockaddr*>(&sock_addr), sizeof(sock_addr));
+    int ret = connect(fd_guard_.fd(), reinterpret_cast<struct sockaddr*>(&sock_addr), sizeof(sock_addr));
     if (ret < 0)
     {
         if (errno == EINPROGRESS)
@@ -235,13 +225,13 @@ Status Socket::Connect(const char* addr, int port)
         return Status::NetworkError("connect() failed");
     }
 
-    LOG_DEBUG("Socket::Connect: fd=%d, addr=%s, port=%d", fd_, addr, port);
+    LOG_DEBUG("Socket::Connect: fd=%d, addr=%s, port=%d", fd_guard_.fd(), addr, port);
     return Status::Ok();
 }
 
 ssize_t Socket::Send(const void* data, size_t len)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         LOG_ERROR("socket not created");
         return -1;
@@ -252,7 +242,7 @@ ssize_t Socket::Send(const void* data, size_t len)
         return 0;
     }
 
-    ssize_t ret = send(fd_, data, len, MSG_NOSIGNAL);
+    ssize_t ret = send(fd_guard_.fd(), data, len, MSG_NOSIGNAL);
     if (ret < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -273,7 +263,7 @@ ssize_t Socket::Send(const void* data, size_t len)
 
 ssize_t Socket::Recv(void* buf, size_t len)
 {
-    if (fd_ < 0)
+    if (!fd_guard_.IsValid())
     {
         LOG_ERROR("socket not created");
         return -1;
@@ -284,7 +274,7 @@ ssize_t Socket::Recv(void* buf, size_t len)
         return 0;
     }
 
-    ssize_t ret = recv(fd_, buf, len, 0);
+    ssize_t ret = recv(fd_guard_.fd(), buf, len, 0);
     if (ret < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -297,7 +287,7 @@ ssize_t Socket::Recv(void* buf, size_t len)
 
     if (ret == 0)
     {
-        LOG_DEBUG("Socket::Recv: fd=%d, connection closed", fd_);
+        LOG_DEBUG("Socket::Recv: fd=%d, connection closed", fd_guard_.fd());
     }
 
     return ret;
@@ -305,12 +295,11 @@ ssize_t Socket::Recv(void* buf, size_t len)
 
 void Socket::Close()
 {
-    if (fd_ >= 0)
+    if (fd_guard_.IsValid())
     {
-        close(fd_);
-        LOG_DEBUG("Socket::Close: fd=%d", fd_);
-        fd_ = -1;
+        LOG_DEBUG("Socket::Close: fd=%d", fd_guard_.fd());
     }
+    fd_guard_.Close();
 }
 
 }  // namespace rtsp_forward

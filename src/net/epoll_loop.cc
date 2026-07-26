@@ -2,7 +2,6 @@
 
 #include <errno.h>
 #include <sys/epoll.h>
-#include <unistd.h>
 
 #include <cstring>
 
@@ -12,7 +11,7 @@
 namespace rtsp_forward
 {
 
-EpollLoop::EpollLoop() : epoll_fd_(-1), running_(false)
+EpollLoop::EpollLoop() : running_(false)
 {
     LOG_DEBUG("EpollLoop created");
 }
@@ -20,36 +19,33 @@ EpollLoop::EpollLoop() : epoll_fd_(-1), running_(false)
 EpollLoop::~EpollLoop()
 {
     Stop();
-    if (epoll_fd_ >= 0)
-    {
-        close(epoll_fd_);
-        LOG_DEBUG("EpollLoop destroyed, epoll_fd=%d", epoll_fd_);
-    }
+    LOG_DEBUG("EpollLoop destroyed");
 }
 
 Status EpollLoop::Init()
 {
-    if (epoll_fd_ >= 0)
+    if (epoll_fd_.IsValid())
     {
         return Status::Ok();
     }
 
-    epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
-    if (epoll_fd_ < 0)
+    int fd = epoll_create1(EPOLL_CLOEXEC);
+    if (fd < 0)
     {
         LOG_ERROR("epoll_create1 failed");
         return Status::Error("epoll_create1 failed");
     }
 
+    epoll_fd_.Reset(fd);
     events_.resize(kEpollEventsSize);
     running_ = true;
-    LOG_DEBUG("EpollLoop initialized, epoll_fd=%d", epoll_fd_);
+    LOG_DEBUG("EpollLoop initialized, epoll_fd=%d", fd);
     return Status::Ok();
 }
 
 Status EpollLoop::AddFd(int fd, EventType events, EventCallback callback)
 {
-    if (epoll_fd_ < 0)
+    if (!epoll_fd_.IsValid())
     {
         return Status::Error("epoll not initialized");
     }
@@ -63,7 +59,7 @@ Status EpollLoop::AddFd(int fd, EventType events, EventCallback callback)
     ev.events = ToEpollEvents(events);
     ev.data.fd = fd;
 
-    int ret = epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev);
+    int ret = epoll_ctl(epoll_fd_.fd(), EPOLL_CTL_ADD, fd, &ev);
     if (ret < 0)
     {
         LOG_ERROR("epoll_ctl ADD failed for fd=%d", fd);
@@ -77,7 +73,7 @@ Status EpollLoop::AddFd(int fd, EventType events, EventCallback callback)
 
 Status EpollLoop::ModifyFd(int fd, EventType events)
 {
-    if (epoll_fd_ < 0)
+    if (!epoll_fd_.IsValid())
     {
         return Status::Error("epoll not initialized");
     }
@@ -91,10 +87,10 @@ Status EpollLoop::ModifyFd(int fd, EventType events)
     ev.events = ToEpollEvents(events);
     ev.data.fd = fd;
 
-    int ret = epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, fd, &ev);
+    int ret = epoll_ctl(epoll_fd_.fd(), EPOLL_CTL_MOD, fd, &ev);
     if (ret < 0)
     {
-        if (errno != ENOENT)  // fd 已从 epoll 移除，静默忽略（流线程并发场景）
+        if (errno != ENOENT)
         {
             LOG_ERROR("epoll_ctl MOD failed for fd=%d: %s", fd, strerror(errno));
         }
@@ -107,7 +103,7 @@ Status EpollLoop::ModifyFd(int fd, EventType events)
 
 Status EpollLoop::RemoveFd(int fd)
 {
-    if (epoll_fd_ < 0)
+    if (!epoll_fd_.IsValid())
     {
         return Status::Error("epoll not initialized");
     }
@@ -117,7 +113,7 @@ Status EpollLoop::RemoveFd(int fd)
         return Status::InvalidArgument("invalid fd");
     }
 
-    int ret = epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr);
+    int ret = epoll_ctl(epoll_fd_.fd(), EPOLL_CTL_DEL, fd, nullptr);
     if (ret < 0)
     {
         LOG_ERROR("epoll_ctl DEL failed for fd=%d", fd);
@@ -131,13 +127,13 @@ Status EpollLoop::RemoveFd(int fd)
 
 int EpollLoop::Wait(int timeout_ms, std::vector<EventResult>& results)
 {
-    if (epoll_fd_ < 0)
+    if (!epoll_fd_.IsValid())
     {
         LOG_ERROR("epoll not initialized");
         return -1;
     }
 
-    int nfds = epoll_wait(epoll_fd_, events_.data(), events_.size(), timeout_ms);
+    int nfds = epoll_wait(epoll_fd_.fd(), events_.data(), events_.size(), timeout_ms);
     if (nfds < 0)
     {
         if (errno == EINTR)
@@ -176,7 +172,7 @@ int EpollLoop::Wait(int timeout_ms, std::vector<EventResult>& results)
 
 void EpollLoop::Run()
 {
-    if (epoll_fd_ < 0)
+    if (!epoll_fd_.IsValid())
     {
         LOG_ERROR("epoll not initialized");
         return;
@@ -200,8 +196,6 @@ void EpollLoop::Run()
             auto it = callbacks_.find(result.fd);
             if (it != callbacks_.end())
             {
-                // 拷贝一份再调用：回调内部可能触发 RemoveFd -> callbacks_.erase，
-                // 直接调用 it->second 会在返回后访问已销毁的 std::function，造成 UAF
                 EventCallback cb = it->second;
                 EventType type = static_cast<EventType>(result.events);
                 cb(result.fd, type, result);

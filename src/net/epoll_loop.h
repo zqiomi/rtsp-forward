@@ -3,46 +3,58 @@
 
 #include <sys/epoll.h>
 
-#include <atomic>
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
-#include "event_loop.h"
+#include "fd_guard.h"
+#include "util/status.h"
 
 namespace rtsp_forward
 {
 
-// EpollLoop - epoll 实现（Linux）
-// 注意：非线程安全，所有接口必须在事件循环线程（即 Run() 所在线程）中调用
-class EpollLoop : public EventLoop
+enum class EventType
+{
+    kRead = 1 << 0,
+    kWrite = 1 << 1,
+    kError = 1 << 2,
+};
+
+struct EventResult
+{
+    int fd;
+    int events;
+};
+
+typedef std::function<void(int fd, EventType type, EventResult result)> EventCallback;
+
+class EpollLoop
 {
 public:
     EpollLoop();
-    ~EpollLoop() override;
+    ~EpollLoop();
 
-    // 禁止拷贝和移动
     EpollLoop(const EpollLoop&) = delete;
     EpollLoop& operator=(const EpollLoop&) = delete;
     EpollLoop(EpollLoop&&) = delete;
     EpollLoop& operator=(EpollLoop&&) = delete;
 
-    Status Init() override;
-    Status AddFd(int fd, EventType events, EventCallback callback) override;
-    Status ModifyFd(int fd, EventType events) override;
-    Status RemoveFd(int fd) override;
-    int Wait(int timeout_ms, std::vector<EventResult>& results) override;
-    void Run() override;
-    void Stop() override;
+    Status Init();
+    Status AddFd(int fd, EventType events, EventCallback callback);
+    Status ModifyFd(int fd, EventType events);
+    Status RemoveFd(int fd);
+    int Wait(int timeout_ms, std::vector<EventResult>& results);
+    void Run();
+    void Stop();
 
 private:
-    // 将 EventType 转换为 epoll events
     static uint32_t ToEpollEvents(EventType events);
 
-    int epoll_fd_;
+    FdGuard epoll_fd_;
+    bool running_;
     std::vector<struct ::epoll_event> events_;
     std::unordered_map<int, EventCallback> callbacks_;
-    std::atomic<bool> running_;
 };
 
 }  // namespace rtsp_forward

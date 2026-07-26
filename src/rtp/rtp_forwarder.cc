@@ -1,7 +1,6 @@
 #include "rtp_forwarder.h"
 
 #include <cstring>
-#include <vector>
 
 #include "util/constants.h"
 #include "util/log.h"
@@ -21,19 +20,18 @@ Status RtpForwarder::ForwardTcp(Connection* conn, const RtpPacket& packet)
         return Status::Closed("connection closed");
     }
 
-    // 构建 interleaved frame: $ + channel(1) + length(2, big-endian) + RTP data
-    // 合并为单次写入，避免头和数据被分到不同 flush 周期导致帧错乱
-    // 使用 thread_local 缓冲区复用，避免每次分配
-    thread_local std::vector<uint8_t> frame_buffer;
-    size_t total_len = 4 + packet.len;
-    if (frame_buffer.size() < total_len)
+    if (packet.len > kMaxRtpPacketSize)
     {
-        frame_buffer.resize(total_len + 1024);  // 多分配一点，减少扩容次数
+        LOG_ERROR("RtpForwarder::ForwardTcp: packet too large, len=%zu", packet.len);
+        return Status::InvalidArgument("packet too large");
     }
-    BuildInterleavedHeader(frame_buffer.data(), packet.stream_index, packet.len);
-    memcpy(frame_buffer.data() + 4, packet.data, packet.len);
 
-    ssize_t ret = conn->Send(frame_buffer.data(), total_len);
+    thread_local uint8_t frame_buffer[kMaxRtpPacketSize + 4];
+    size_t total_len = 4 + packet.len;
+    BuildInterleavedHeader(frame_buffer, packet.stream_index, packet.len);
+    memcpy(frame_buffer + 4, packet.data, packet.len);
+
+    ssize_t ret = conn->Send(frame_buffer, total_len);
     if (ret < 0)
     {
         LOG_ERROR("RtpForwarder::ForwardTcp: send failed");
@@ -52,8 +50,7 @@ Status RtpForwarder::ForwardUdp(const UdpEndpoint& endpoint, const RtpPacket& pa
     }
 
     ssize_t ret = ::sendto(endpoint.fd, packet.data, packet.len, 0,
-                           reinterpret_cast<const struct sockaddr*>(&endpoint.addr),
-                           sizeof(endpoint.addr));
+                           reinterpret_cast<const struct sockaddr*>(&endpoint.addr), sizeof(endpoint.addr));
     if (ret < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)

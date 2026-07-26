@@ -2,19 +2,20 @@
 
 #include <errno.h>
 #include <sys/socket.h>
-#include <unistd.h>
 
 #include <cstring>
 #include <string>
 
+#include "util/constants.h"
 #include "util/log.h"
 
 namespace rtsp_forward
 {
 
-Connection::Connection(int fd, size_t buffer_size) : fd_(fd), read_buffer_(buffer_size), write_buffer_(buffer_size)
+Connection::Connection(int fd, size_t buffer_size)
+    : fd_guard_(fd), read_buffer_(buffer_size), write_buffer_(buffer_size)
 {
-    LOG_DEBUG("Connection created, fd=%d, buffer_size=%zu", fd_, buffer_size);
+    LOG_DEBUG("Connection created, fd=%d, buffer_size=%zu", fd, buffer_size);
 }
 
 Connection::~Connection()
@@ -36,10 +37,9 @@ ssize_t Connection::Recv()
     }
 
     char* buf = read_buffer_.WritePtr();
-    // 必须用连续可写空间，否则 write_pos_ 靠近末尾时 recv 会越过 buffer 末尾越界写
     size_t writable = read_buffer_.ContiguousWritableSize();
 
-    ssize_t ret = ::recv(fd_, buf, writable, 0);
+    ssize_t ret = ::recv(fd_guard_.fd(), buf, writable, 0);
     if (ret < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -52,12 +52,12 @@ ssize_t Connection::Recv()
 
     if (ret == 0)
     {
-        LOG_DEBUG("Connection::Recv: fd=%d, connection closed", fd_);
+        LOG_DEBUG("Connection::Recv: fd=%d, connection closed", fd_guard_.fd());
         return 0;
     }
 
     read_buffer_.Produce(ret);
-    LOG_TRACE("Connection::Recv: fd=%d, received=%zd", fd_, ret);
+    LOG_TRACE("Connection::Recv: fd=%d, received=%zd", fd_guard_.fd(), ret);
     return ret;
 }
 
@@ -75,29 +75,27 @@ ssize_t Connection::Send(const void* data, size_t len)
         return 0;
     }
 
-    // 尝试直接发送
     if (write_buffer_.ReadableSize() == 0)
     {
-        ssize_t ret = ::send(fd_, data, len, MSG_NOSIGNAL);
+        ssize_t ret = ::send(fd_guard_.fd(), data, len, MSG_NOSIGNAL);
         if (ret > 0)
         {
             size_t sent = static_cast<size_t>(ret);
             if (sent < len)
             {
-                // 部分发送：剩余数据写入缓冲区，避免丢失
                 Status st = write_buffer_.Write(static_cast<const char*>(data) + sent, len - sent);
                 if (!st.ok())
                 {
-                    LOG_WARN("Connection::Send: write buffer full on partial send, fd=%d", fd_);
+                    LOG_WARN("Connection::Send: write buffer full on partial send, fd=%d", fd_guard_.fd());
                     return static_cast<ssize_t>(sent);
                 }
-                LOG_TRACE("Connection::Send: fd=%d, sent=%zu, buffered=%zu", fd_, sent, len - sent);
+                LOG_TRACE("Connection::Send: fd=%d, sent=%zu, buffered=%zu", fd_guard_.fd(), sent, len - sent);
             }
             else
             {
-                LOG_TRACE("Connection::Send: fd=%d, sent=%zu", fd_, len);
+                LOG_TRACE("Connection::Send: fd=%d, sent=%zu", fd_guard_.fd(), len);
             }
-            return static_cast<ssize_t>(len);  // 报告全部成功（已发 + 已缓存）
+            return static_cast<ssize_t>(len);
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK)
         {
@@ -106,7 +104,6 @@ ssize_t Connection::Send(const void* data, size_t len)
         }
     }
 
-    // 写入缓冲区
     Status status = write_buffer_.Write(data, len);
     if (!status.ok())
     {
@@ -114,7 +111,7 @@ ssize_t Connection::Send(const void* data, size_t len)
         return -1;
     }
 
-    LOG_TRACE("Connection::Send: fd=%d, buffered=%zu", fd_, len);
+    LOG_TRACE("Connection::Send: fd=%d, buffered=%zu", fd_guard_.fd(), len);
     return len;
 }
 
@@ -127,7 +124,6 @@ ssize_t Connection::Flush()
         return 0;
     }
 
-    // 只发送从读指针起的连续段，避免数据环绕时 send 越过 buffer 末尾越界读
     size_t contiguous = write_buffer_.ContiguousReadableSize();
     if (contiguous == 0)
     {
@@ -135,7 +131,7 @@ ssize_t Connection::Flush()
     }
 
     const char* buf = write_buffer_.ReadPtr();
-    ssize_t ret = ::send(fd_, buf, contiguous, MSG_NOSIGNAL);
+    ssize_t ret = ::send(fd_guard_.fd(), buf, contiguous, MSG_NOSIGNAL);
     if (ret < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -147,7 +143,7 @@ ssize_t Connection::Flush()
     }
 
     write_buffer_.Consume(ret);
-    LOG_DEBUG("Connection::Flush: fd=%d, flushed=%zd", fd_, ret);
+    LOG_DEBUG("Connection::Flush: fd=%d, flushed=%zd", fd_guard_.fd(), ret);
     return ret;
 }
 
@@ -176,13 +172,19 @@ bool Connection::ReadLine(std::string& line, size_t max_line_len)
     }
 
     size_t line_len = newline_offset + 1;
-    line.resize(line_len);
-    if (!read_buffer_.Peek(&line[0], line_len).ok())
+    char temp_buf[kMaxRtspRequestDataLen];
+    if (line_len > sizeof(temp_buf))
+    {
+        LOG_WARN("Connection::ReadLine: line too long, len=%zu, max=%zu", line_len, sizeof(temp_buf));
+        read_buffer_.Consume(max_line_len);
+        return false;
+    }
+    if (!read_buffer_.Peek(temp_buf, line_len).ok())
     {
         return false;
     }
+    line.assign(temp_buf, line_len);
 
-    // 先去掉末尾 \n，再判断是否有 \r
     if (line.size() >= 1 && line[line.size() - 1] == '\n')
     {
         line.resize(line.size() - 1);
@@ -193,6 +195,48 @@ bool Connection::ReadLine(std::string& line, size_t max_line_len)
     }
 
     read_buffer_.Consume(line_len);
+    return true;
+}
+
+bool Connection::ReadLine(const char*& line_ptr, size_t& line_len, size_t max_line_len)
+{
+    if (IsClosed())
+    {
+        return false;
+    }
+
+    size_t readable = read_buffer_.ReadableSize();
+    if (readable == 0)
+    {
+        return false;
+    }
+
+    size_t newline_offset = read_buffer_.FindChar('\n', max_line_len);
+    if (newline_offset == RingBuffer::npos)
+    {
+        if (readable >= max_line_len)
+        {
+            LOG_WARN("Connection::ReadLine: line too long, max=%zu", max_line_len);
+            read_buffer_.Consume(max_line_len);
+        }
+        return false;
+    }
+
+    line_len = newline_offset;
+    line_ptr = read_buffer_.ReadPtr();
+
+    size_t total_len = newline_offset + 1;
+    if (total_len > read_buffer_.ContiguousReadableSize())
+    {
+        return false;
+    }
+
+    if (line_len > 0 && line_ptr[line_len - 1] == '\r')
+    {
+        line_len--;
+    }
+
+    read_buffer_.Consume(total_len);
     return true;
 }
 
@@ -218,12 +262,11 @@ bool Connection::IsWritable() const
 
 void Connection::Close()
 {
-    if (fd_ >= 0)
+    if (fd_guard_.IsValid())
     {
-        LOG_DEBUG("Connection::Close: fd=%d", fd_);
-        ::close(fd_);
-        fd_ = -1;
+        LOG_DEBUG("Connection::Close: fd=%d", fd_guard_.fd());
     }
+    fd_guard_.Close();
 }
 
 }  // namespace rtsp_forward
