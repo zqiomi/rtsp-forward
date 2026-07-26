@@ -40,6 +40,9 @@ public:
     // 获取可写空间大小
     size_t WritableSize() const;
 
+    // 获取从 WritePtr 起的连续可写空间大小（不越过 buffer 末尾，避免环绕导致越界写）
+    size_t ContiguousWritableSize() const;
+
     // 获取总容量
     size_t Capacity() const;
 

@@ -2,7 +2,6 @@
 #define RTSP_FORWARD_LOG_H_
 
 #include <cstdarg>
-#include <string>
 
 namespace rtsp_forward
 {
@@ -10,11 +9,12 @@ namespace rtsp_forward
 // 日志级别
 enum class LogLevel
 {
-    kDebug = 0,
-    kInfo = 1,
-    kWarn = 2,
-    kError = 3,
-    kFatal = 4,
+    kTrace = 0,
+    kDebug,
+    kInfo,
+    kWarn,
+    kError,
+    kFatal,
 };
 
 // 日志类
@@ -36,6 +36,7 @@ private:
 };
 
 // 日志宏（自动携带文件、函数、行号）
+#define LOG_TRACE(format, ...) Logger::Log(LogLevel::kTrace, __FILE__, __func__, __LINE__, format, ##__VA_ARGS__)
 #define LOG_DEBUG(format, ...) Logger::Log(LogLevel::kDebug, __FILE__, __func__, __LINE__, format, ##__VA_ARGS__)
 #define LOG_INFO(format, ...) Logger::Log(LogLevel::kInfo, __FILE__, __func__, __LINE__, format, ##__VA_ARGS__)
 #define LOG_WARN(format, ...) Logger::Log(LogLevel::kWarn, __FILE__, __func__, __LINE__, format, ##__VA_ARGS__)

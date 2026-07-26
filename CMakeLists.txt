@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.10)
 project(rtsp_forward
-    VERSION 1.0.0
+    VERSION 1.1.0
     DESCRIPTION "轻量级RTSP转发服务器库"
     LANGUAGES CXX)
 
 # ===== 编译选项 =====
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -fno-exceptions")
+# 默认调试模式：开启 -g 与 AddressSanitizer
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -fno-exceptions -g -fno-omit-frame-pointer")
+# set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+# set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ===== 构建选项 =====
@@ -21,6 +24,14 @@ include(GNUInstallDirs)
 # 头文件路径
 include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_BINARY_DIR})  # version.h 生成在此
+
+# ===== 版本头文件（从 project(VERSION) 注入）=====
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/version.h.in"
+    "${CMAKE_BINARY_DIR}/version.h"
+    @ONLY
+)
 
 # ===== 源文件列表 =====
 set(RTSP_FORWARD_SOURCES
@@ -79,11 +90,12 @@ install(FILES "${CMAKE_BINARY_DIR}/rtsp_forward.pc"
 
 # ===== Demo 程序 =====
 if(BUILD_DEMO)
+    find_package(Threads REQUIRED)
     add_executable(rtsp_forward_demo demo/main.cc)
     if(BUILD_SHARED_LIBS)
-        target_link_libraries(rtsp_forward_demo rtsp_forward_shared)
+        target_link_libraries(rtsp_forward_demo rtsp_forward_shared Threads::Threads)
     else()
-        target_link_libraries(rtsp_forward_demo rtsp_forward_static)
+        target_link_libraries(rtsp_forward_demo rtsp_forward_static Threads::Threads)
     endif()
     install(TARGETS rtsp_forward_demo
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

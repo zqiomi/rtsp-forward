@@ -143,8 +143,7 @@ enum class RtspSessionState {
 | `rtsp_forward_run()` | 运行事件循环 | server | void |
 | `rtsp_forward_send_rtp()` | 发送RTP包 | server, data, len, stream_index | 错误码 |
 | `rtsp_forward_set_sdp()` | 设置SDP内容 | server, sdp | 错误码 |
-| `rtsp_forward_is_running()` | 检查运行状态 | server | 0/1 |
-| `rtsp_forward_get_port()` | 获取端口 | server | 端口号 |
+| `rtsp_forward_get_info()` | 获取服务器信息（配置、状态、统计） | server, info | 错误码 |
 
 ### 2.4 线程安全策略
 
@@ -620,7 +619,23 @@ make
 
 ## 10. 改进点规划
 
-### 10.1 UDP 传输支持（V1.2）
+### 10.1 统计信息与超时机制（V1.1，已实现）
+
+**统一查询接口**：
+
+- `RtspForwardInfo` 结构体：统一包含端口、最大会话数、运行状态、活跃/播放会话数、累计连接数、超时关闭会话数、运行时长
+- `rtsp_forward_get_info()` API：线程安全查询，替代原先的 `is_running`/`get_port`/`get_active_sessions`/`get_stats` 四个独立查询接口
+- `RtspForward` 内部使用 `std::atomic<uint64_t>` 原子计数器，保证双线程模型下的统计安全
+
+**超时机制**：
+
+- `RtspForwardConfig` 新增 `connection_timeout_sec`（连接阶段超时，默认30秒）和 `session_timeout_sec`（会话阶段超时，默认60秒），0 表示不超时
+- `RtspSession` 新增 `last_activity_sec_`（`std::atomic<int64_t>`），在收到 RTSP 请求或转发 RTP 时更新
+- `RtspSession::IsTimedOut()` 根据会话状态选择对应的超时阈值判断
+- `RtspForward` 使用 `timerfd`（1秒周期）注册到 epoll 事件循环，触发 `CheckTimeouts()` 清理超时会话
+- 超时关闭的会话计入 `timed_out_sessions_` 统计
+
+### 10.2 UDP 传输支持（V1.2）
 
 - 在 `RtspSession` 中添加 UDP socket 管理
 - 在 `RtspParser` 中解析 Transport 头的 client_port
@@ -632,12 +647,12 @@ make
 - 在 `Connection` 中支持 TLS 握手
 - 在 API 中添加证书路径配置
 
-### 10.3 版本规划
+### 10.4 版本规划
 
 | 版本 | 功能 | 状态 |
 | :--- | :--- | :--- |
-| V1.0 | 基础功能：RTSP协议处理、RTP透传(TCP)、C API、双线程模型、SDP动态更新、配置结构体、最大会话数限制 | 开发中 |
-| V1.1 | 统计信息、超时机制 | 规划中 |
+| V1.0 | 基础功能：RTSP协议处理、RTP透传(TCP)、C API、双线程模型、SDP动态更新、配置结构体、最大会话数限制 | 已完成 |
+| V1.1 | 统计信息、超时机制 | 已完成 |
 | V1.2 | UDP传输支持 | 规划中 |
 | V1.3 | 错误处理优化、日志级别控制 | 规划中 |
 | V1.4 | TLS支持 | 规划中 |
@@ -658,3 +673,6 @@ make
 | CHG-010 | rtsp_forward_start移除ip/port参数 | 配置统一在create时指定，简化API | V1.0 |
 | CHG-011 | 添加rtsp_forward_get_active_sessions API | 支持查询当前活跃会话数 | V1.0 |
 | CHG-012 | 添加Doxygen注释规范 | 提升代码文档质量，支持自动生成文档 | V1.0 |
+| CHG-013 | 合并is_running/get_port/get_active_sessions为统一rtsp_forward_get_info接口 | 减少查询API数量，轻量统一 | V1.1 |
+| CHG-014 | 添加timerfd超时检查机制 | 自动清理空闲连接和超时会话，防止资源泄漏 | V1.1 |
+| CHG-015 | Config新增connection_timeout_sec和session_timeout_sec字段 | 支持可配置的超时策略，0表示不超时 | V1.1 |

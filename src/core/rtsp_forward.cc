@@ -1,8 +1,12 @@
 #include "rtsp_forward.h"
 
+#include <sys/timerfd.h>
+#include <unistd.h>
+
 #include <memory>
 #include <vector>
 
+#include "../../include/rtsp_forward.h"  // 公共 API 头文件（RtspForwardStats 完整定义）
 #include "../net/connection.h"
 #include "../util/constants.h"
 #include "../util/log.h"
@@ -11,16 +15,22 @@
 namespace rtsp_forward
 {
 
-RtspForward::RtspForward(const std::string& ip, int port, int max_sessions, size_t buffer_size)
+RtspForward::RtspForward(const std::string& ip, int port, int max_sessions, size_t buffer_size,
+                         int connection_timeout_sec, int session_timeout_sec)
     : running_(false),
       port_(port),
       max_sessions_(max_sessions),
       buffer_size_(buffer_size),
       ip_(ip),
-      session_sequence_(0)
+      session_sequence_(0),
+      connection_timeout_sec_(connection_timeout_sec),
+      session_timeout_sec_(session_timeout_sec),
+      timer_fd_(-1),
+      total_connections_(0),
+      timed_out_sessions_(0)
 {
-    LOG_INFO("RtspForward created, ip=%s, port=%d, max_sessions=%d, buffer_size=%zu", ip_.c_str(), port_, max_sessions_,
-             buffer_size_);
+    LOG_INFO("RtspForward created, ip=%s, port=%d, max_sessions=%d, buffer_size=%zu, conn_timeout=%d, sess_timeout=%d",
+             ip_.c_str(), port_, max_sessions_, buffer_size_, connection_timeout_sec_, session_timeout_sec_);
 }
 
 RtspForward::~RtspForward()
@@ -63,6 +73,48 @@ Status RtspForward::Start()
         return status;
     }
 
+    // 创建 timerfd 用于周期性超时检查
+    timer_fd_ = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (timer_fd_ < 0)
+    {
+        LOG_ERROR("RtspForward::Start: timerfd_create failed");
+        return Status::Error("timerfd_create failed");
+    }
+
+    struct itimerspec ts;
+    ts.it_interval.tv_sec = kTimeoutCheckIntervalSec;
+    ts.it_interval.tv_nsec = 0;
+    ts.it_value.tv_sec = kTimeoutCheckIntervalSec;
+    ts.it_value.tv_nsec = 0;
+    if (timerfd_settime(timer_fd_, 0, &ts, nullptr) < 0)
+    {
+        LOG_ERROR("RtspForward::Start: timerfd_settime failed");
+        close(timer_fd_);
+        timer_fd_ = -1;
+        return Status::Error("timerfd_settime failed");
+    }
+
+    status = event_loop_.AddFd(timer_fd_, EventType::kRead,
+                               [this](int fd, EventType type, EventResult result)
+                               {
+                                   (void)type;
+                                   (void)result;
+                                   // 读取 timerfd 触发次数，避免水平触发反复唤醒
+                                   uint64_t expirations;
+                                   if (read(fd, &expirations, sizeof(expirations)) > 0)
+                                   {
+                                       this->CheckTimeouts();
+                                   }
+                               });
+    if (!status.ok())
+    {
+        LOG_ERROR("RtspForward::Start: add timer fd failed, status=%s", status.ToString().c_str());
+        close(timer_fd_);
+        timer_fd_ = -1;
+        return status;
+    }
+
+    start_time_ = std::chrono::steady_clock::now();
     running_ = true;
     LOG_INFO("RtspForward::Start: server started on %s:%d", ip_.c_str(), port_);
     return Status::Ok();
@@ -81,6 +133,14 @@ void RtspForward::Stop()
 
     // 停止事件循环
     event_loop_.Stop();
+
+    // 清理 timerfd
+    if (timer_fd_ >= 0)
+    {
+        event_loop_.RemoveFd(timer_fd_);
+        close(timer_fd_);
+        timer_fd_ = -1;
+    }
 
     // 关闭所有会话
     {
@@ -140,6 +200,16 @@ Status RtspForward::BroadcastRtp(const RtpPacket& packet)
         if (!status.ok())
         {
             LOG_WARN("RtspForward::BroadcastRtp: forward failed for session %s", session->session_id().c_str());
+            continue;
+        }
+
+        // 如果有数据被缓冲（socket 满导致 EAGAIN），注册 EPOLLOUT 触发 flush
+        // 否则缓冲的 RTP 数据不会被发出，客户端会因超时断开重连
+        Connection* conn = session->connection();
+        if (conn && conn->NeedFlush())
+        {
+            event_loop_.ModifyFd(conn->fd(),
+                                 EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
         }
     }
 
@@ -150,17 +220,7 @@ void RtspForward::OnNewConnection(int fd)
 {
     LOG_DEBUG("RtspForward::OnNewConnection: fd=%d", fd);
 
-    // 检查最大会话数限制
-    {
-        std::lock_guard<std::mutex> lock(sessions_mutex_);
-        if (sessions_.size() >= static_cast<size_t>(max_sessions_))
-        {
-            LOG_WARN("RtspForward::OnNewConnection: max sessions exceeded, current=%zu, max=%d", sessions_.size(),
-                     max_sessions_);
-            return;
-        }
-    }
-
+    // 必须先 accept 取出 pending 连接，否则 listener fd 持续可读，epoll 反复触发
     int client_fd = listener_.Accept();
     if (client_fd < 0)
     {
@@ -168,7 +228,20 @@ void RtspForward::OnNewConnection(int fd)
         return;
     }
 
+    // 检查最大会话数限制：超限直接关闭，让客户端立即感知拒绝
+    {
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        if (sessions_.size() >= static_cast<size_t>(max_sessions_))
+        {
+            LOG_WARN("RtspForward::OnNewConnection: max sessions exceeded, current=%zu, max=%d, reject fd=%d",
+                     sessions_.size(), max_sessions_, client_fd);
+            ::close(client_fd);
+            return;
+        }
+    }
+
     LOG_INFO("RtspForward::OnNewConnection: new client connected, fd=%d", client_fd);
+    total_connections_.fetch_add(1, std::memory_order_relaxed);
 
     // 添加读事件（先注册事件，再创建会话）
     Status status = event_loop_.AddFd(client_fd, EventType::kRead,
@@ -211,7 +284,7 @@ void RtspForward::OnNewConnection(int fd)
 
 void RtspForward::OnRead(int fd)
 {
-    LOG_DEBUG("RtspForward::OnRead: fd=%d", fd);
+    LOG_TRACE("RtspForward::OnRead: fd=%d", fd);
     ProcessConnectionData(fd);
 }
 
@@ -308,45 +381,132 @@ void RtspForward::ProcessConnectionData(int fd)
         return;
     }
 
-    // 循环读取完整 RTSP 请求（以空行 \r\n\r\n 结尾）
-    std::string request_data;
-    std::string line;
-    bool request_complete = false;
-
-    while (conn->ReadLine(line))
+    // 循环处理缓冲区中的所有消息（interleaved 帧 + RTSP 请求）
+    while (conn->GetReadBufferSize() > 0)
     {
-        if (line.empty())
+        // 检测 interleaved 帧（客户端回传 RTCP，以 '$' 0x24 开头）
+        // 格式: $ | channel(1) | length(2, big-endian) | data(length)
+        uint8_t header[4];
+        if (conn->Peek(header, 4).ok() && header[0] == 0x24)
         {
-            // 空行表示请求头结束
-            request_complete = true;
-            break;
+            uint16_t frame_len = static_cast<uint16_t>((header[2] << 8) | header[3]);
+            size_t total = static_cast<size_t>(4) + frame_len;
+            if (conn->GetReadBufferSize() < total)
+            {
+                break;  // 数据不完整，等待下次读事件
+            }
+            LOG_TRACE("RtspForward::ProcessConnectionData: skip interleaved frame, fd=%d, channel=%d, len=%d", fd,
+                      header[1], frame_len);
+            conn->Consume(total);
+            continue;  // 处理下一条消息
         }
-        request_data += line + "\r\n";
+
+        // 解析 RTSP 请求（以空行 \r\n\r\n 结尾）
+        std::string request_data;
+        std::string line;
+        bool request_complete = false;
+
+        while (conn->ReadLine(line))
+        {
+            if (line.empty())
+            {
+                request_complete = true;
+                break;
+            }
+            request_data += line + "\r\n";
+        }
+
+        if (request_complete)
+        {
+            LOG_DEBUG("RtspForward::ProcessConnectionData: complete request, fd=%d, size=%zu", fd, request_data.size());
+            Status process_status = session->ProcessData(request_data);
+            if (!process_status.ok())
+            {
+                LOG_WARN("RtspForward::ProcessConnectionData: process failed, status=%s",
+                         process_status.ToString().c_str());
+            }
+
+            // 处理完请求后检查是否有数据需要刷新
+            if (conn->NeedFlush())
+            {
+                event_loop_.ModifyFd(
+                    fd, EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
+            }
+            // 继续循环处理下一条消息
+        }
+        else if (conn->IsClosed())
+        {
+            LOG_INFO("RtspForward::ProcessConnectionData: connection closed, fd=%d", fd);
+            CloseConnection(fd);
+            return;
+        }
+        else
+        {
+            break;  // 数据不完整，等待下次读事件
+        }
+    }
+}
+
+void RtspForward::CheckTimeouts()
+{
+    // 两个超时都为 0 时无需检查
+    if (connection_timeout_sec_ <= 0 && session_timeout_sec_ <= 0)
+    {
+        return;
     }
 
-    if (request_complete)
+    // 收集超时的 fd，在锁外关闭
+    std::vector<int> timed_out_fds;
     {
-        LOG_DEBUG("RtspForward::ProcessConnectionData: complete request, fd=%d, size=%zu", fd, request_data.size());
-        Status process_status = session->ProcessData(request_data);
-        if (!process_status.ok())
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        for (auto& pair : sessions_)
         {
-            LOG_WARN("RtspForward::ProcessConnectionData: process failed, status=%s",
-                     process_status.ToString().c_str());
-        }
-
-        // 处理完请求后检查是否有数据需要刷新
-        if (conn->NeedFlush())
-        {
-            event_loop_.ModifyFd(fd,
-                                 EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
+            if (pair.second->IsTimedOut(connection_timeout_sec_, session_timeout_sec_))
+            {
+                timed_out_fds.push_back(pair.first);
+            }
         }
     }
-    else if (conn->IsClosed())
+
+    for (int fd : timed_out_fds)
     {
-        LOG_INFO("RtspForward::ProcessConnectionData: connection closed, fd=%d", fd);
+        LOG_INFO("RtspForward::CheckTimeouts: session timed out, fd=%d", fd);
+        timed_out_sessions_.fetch_add(1, std::memory_order_relaxed);
         CloseConnection(fd);
     }
-    // 数据不完整，等待下次读事件
+}
+
+void RtspForward::GetInfo(RtspForwardInfo* info)
+{
+    if (!info)
+    {
+        return;
+    }
+
+    int active = 0;
+    int playing = 0;
+    {
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        for (auto& pair : sessions_)
+        {
+            active++;
+            if (pair.second->state() == RtspSessionState::kPlaying)
+            {
+                playing++;
+            }
+        }
+    }
+
+    auto uptime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time_);
+
+    info->port = port_;
+    info->max_sessions = max_sessions_;
+    info->running = running_ ? 1 : 0;
+    info->active_sessions = active;
+    info->playing_sessions = playing;
+    info->total_connections = total_connections_.load(std::memory_order_relaxed);
+    info->timed_out_sessions = timed_out_sessions_.load(std::memory_order_relaxed);
+    info->uptime_sec = static_cast<uint64_t>(uptime.count());
 }
 
 }  // namespace rtsp_forward

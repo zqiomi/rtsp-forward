@@ -48,12 +48,31 @@ typedef enum RtspErrorCode
  */
 typedef struct RtspForwardConfig
 {
-    int port;                /**< 监听端口，范围1-65535，默认554 */
-    const char* ip;          /**< 监听地址，默认"0.0.0.0" */
-    int max_sessions;        /**< 最大并发会话数，默认10 */
-    size_t buffer_size;      /**< 每个连接的缓冲区大小（字节），默认65536 */
-    const char* sdp_content; /**< SDP内容，可为NULL（后续通过rtsp_forward_set_sdp设置） */
+    int port;                   /**< 监听端口，范围1-65535，默认554 */
+    const char* ip;             /**< 监听地址，默认"0.0.0.0" */
+    int max_sessions;           /**< 最大并发会话数，默认10 */
+    size_t buffer_size;         /**< 每个连接的缓冲区大小（字节），默认65536 */
+    const char* sdp_content;    /**< SDP内容，可为NULL（后续通过rtsp_forward_set_sdp设置） */
+    int connection_timeout_sec; /**< 连接空闲超时（秒），适用于握手未完成的会话，0=不超时，默认30 */
+    int session_timeout_sec;    /**< 会话空闲超时（秒），适用于已建立的会话，0=不超时，默认60 */
 } RtspForwardConfig;
+
+/**
+ * @brief RTSP转发 服务器信息结构体
+ *
+ * 统一查询服务器的配置、运行状态与会话统计信息。
+ */
+typedef struct RtspForwardInfo
+{
+    int port;                    /**< 监听端口 */
+    int max_sessions;            /**< 最大并发会话数 */
+    int running;                 /**< 是否运行中（1=运行，0=未运行） */
+    int active_sessions;         /**< 当前活跃会话数 */
+    int playing_sessions;        /**< 当前播放中会话数 */
+    uint64_t total_connections;  /**< 累计连接数 */
+    uint64_t timed_out_sessions; /**< 因超时关闭的会话数 */
+    uint64_t uptime_sec;         /**< 服务器运行时长（秒） */
+} RtspForwardInfo;
 
 /**
  * @brief 创建 RTSP 服务器实例
@@ -169,31 +188,36 @@ int rtsp_forward_send_rtp(void* server, const uint8_t* data, size_t len, int str
 int rtsp_forward_set_sdp(void* server, const char* sdp);
 
 /**
- * @brief 检查服务器是否正在运行
+ * @brief 获取服务器信息（配置、状态、统计）
+ *
+ * 统一查询服务器的监听端口、运行状态、会话统计等信息。
  *
  * @param[in] server 服务器句柄
- * @param[out] running 输出参数，1表示正在运行，0表示未运行
+ * @param[out] info 输出参数，服务器信息结构体
  * @return RTSP_OK表示成功，其他值表示失败
+ *
+ * @note 此函数线程安全，可在任意线程调用
  */
-int rtsp_forward_is_running(void* server, int* running);
+int rtsp_forward_get_info(void* server, RtspForwardInfo* info);
 
 /**
- * @brief 获取服务器监听端口
+ * @brief 获取版本号字符串
  *
- * @param[in] server 服务器句柄
- * @param[out] port 输出参数，监听端口号
- * @return RTSP_OK表示成功，其他值表示失败
+ * @return 版本号字符串，如 "1.1.0"，静态存储，无需释放
  */
-int rtsp_forward_get_port(void* server, int* port);
+const char* rtsp_forward_version_string(void);
 
 /**
- * @brief 获取当前活跃会话数
+ * @brief 获取编译信息字符串
  *
- * @param[in] server 服务器句柄
- * @param[out] count 输出参数，当前活跃会话数
- * @return RTSP_OK表示成功，其他值表示失败
+ * @return 编译信息字符串，如 "Built at Jul 26 2026 09:30:48"，静态存储，无需释放
  */
-int rtsp_forward_get_active_sessions(void* server, int* count);
+const char* rtsp_forward_build_info(void);
+
+/**
+ * @brief 打印版本信息到 stdout
+ */
+void rtsp_forward_print_version(void);
 
 #ifdef __cplusplus
 }

@@ -9,7 +9,7 @@ namespace rtsp_forward
 {
 
 // 静态成员初始化
-LogLevel Logger::current_level_ = LogLevel::kInfo;
+LogLevel Logger::current_level_ = LogLevel::kDebug;
 
 void Logger::SetLevel(LogLevel level)
 {
@@ -35,6 +35,9 @@ void Logger::Log(LogLevel level, const char* file, const char* func, int line, c
     const char* level_str;
     switch (level)
     {
+        case LogLevel::kTrace:
+            level_str = "TRACE";
+            break;
         case LogLevel::kDebug:
             level_str = "DEBUG";
             break;

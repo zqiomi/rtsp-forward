@@ -26,6 +26,8 @@ Status RtspParser::Parse(const std::string& data, RtspRequest& request)
         return Status::InvalidArgument("empty data");
     }
 
+    LOG_TRACE("Parse '%s'", data.c_str());
+
     // 清空请求结构
     request.method = RtspMethod::kUnknown;
     request.url.clear();
@@ -105,6 +107,10 @@ Status RtspParser::ParseRequestLine(const std::string& line, RtspRequest& reques
     }
 
     request.method = ParseMethod(method_str);
+    if (request.method == RtspMethod::kUnknown)
+    {
+        LOG_WARN("RtspParser: unknown method='%s', request_line='%s'", method_str.c_str(), line.c_str());
+    }
     request.url = url;
     request.version = version;
 
@@ -160,6 +166,8 @@ RtspMethod RtspParser::ParseMethod(const std::string& method_str)
     if (method_str == "PLAY") return RtspMethod::kPlay;
     if (method_str == "PAUSE") return RtspMethod::kPause;
     if (method_str == "TEARDOWN") return RtspMethod::kTeardown;
+    if (method_str == "GET_PARAMETER") return RtspMethod::kGetParameter;
+    if (method_str == "SET_PARAMETER") return RtspMethod::kSetParameter;
     return RtspMethod::kUnknown;
 }
 
@@ -179,6 +187,10 @@ std::string RtspParser::MethodToString(RtspMethod method)
             return "PAUSE";
         case RtspMethod::kTeardown:
             return "TEARDOWN";
+        case RtspMethod::kGetParameter:
+            return "GET_PARAMETER";
+        case RtspMethod::kSetParameter:
+            return "SET_PARAMETER";
         default:
             return "UNKNOWN";
     }

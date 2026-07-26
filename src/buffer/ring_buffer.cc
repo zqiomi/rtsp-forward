@@ -10,12 +10,12 @@ namespace rtsp_forward
 RingBuffer::RingBuffer(size_t capacity) : capacity_(capacity), read_pos_(0), write_pos_(0), readable_size_(0)
 {
     buffer_ = std::unique_ptr<char[]>(new char[capacity]);
-    LOG_DEBUG("RingBuffer created, capacity=%zu", capacity);
+    LOG_DEBUG("RingBuffer[%p] created, capacity=%zu", this, capacity);
 }
 
 RingBuffer::~RingBuffer()
 {
-    LOG_DEBUG("RingBuffer destroyed");
+    LOG_DEBUG("RingBuffer[%p] destroyed", this);
 }
 
 Status RingBuffer::Write(const void* data, size_t size)
@@ -122,6 +122,13 @@ size_t RingBuffer::ReadableSize() const
 size_t RingBuffer::WritableSize() const
 {
     return capacity_ - readable_size_;
+}
+
+size_t RingBuffer::ContiguousWritableSize() const
+{
+    size_t writable = WritableSize();
+    size_t to_end = capacity_ - write_pos_;
+    return writable < to_end ? writable : to_end;
 }
 
 size_t RingBuffer::Capacity() const

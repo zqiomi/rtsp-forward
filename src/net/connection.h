@@ -42,6 +42,12 @@ public:
     // 消费缓冲区数据
     void Consume(size_t len);
 
+    // 查看数据（不移动读指针）
+    Status Peek(void* data, size_t size) const
+    {
+        return read_buffer_->Peek(data, size);
+    }
+
     // 获取文件描述符
     int fd() const
     {

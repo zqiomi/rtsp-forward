@@ -1,6 +1,9 @@
 #ifndef RTSP_FORWARD_RTSP_SESSION_H_
 #define RTSP_FORWARD_RTSP_SESSION_H_
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <string>
 
 #include "net/connection.h"
@@ -66,6 +69,18 @@ public:
     // 关闭会话
     void Close();
 
+    /**
+     * @brief 检查会话是否已超时
+     *
+     * @param connection_timeout_sec 连接阶段超时（秒），适用于握手未完成的会话
+     * @param session_timeout_sec 会话阶段超时（秒），适用于已建立的会话
+     * @return bool true表示已超时
+     */
+    bool IsTimedOut(int connection_timeout_sec, int session_timeout_sec) const;
+
+    // 更新活动时间（收到 RTSP 请求或转发 RTP 时调用）
+    void UpdateActivity();
+
 private:
     // 处理 RTSP 请求
     Status HandleRequest(const RtspRequest& request);
@@ -88,6 +103,9 @@ private:
     // 处理 PAUSE 请求
     Status HandlePause(const RtspRequest& request);
 
+    // 处理 GET_PARAMETER / SET_PARAMETER 请求（VLC 心跳保活）
+    Status HandleParameter(const RtspRequest& request);
+
     // 生成会话 ID（时间戳 + 递增序列号）
     std::string GenerateSessionId();
 
@@ -100,6 +118,9 @@ private:
     RtpForwarder rtp_forwarder_;
     std::string url_;
     std::string transport_;
+
+    // 统计与超时相关
+    std::atomic<int64_t> last_activity_sec_;  // 最近活动时间（steady_clock 秒，原子保证线程安全）
 };
 
 }  // namespace rtsp_forward

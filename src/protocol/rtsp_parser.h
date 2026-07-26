@@ -20,6 +20,8 @@ enum class RtspMethod
     kPlay,
     kPause,
     kTeardown,
+    kGetParameter,
+    kSetParameter,
 };
 
 // RTSP 请求结构

@@ -4,6 +4,8 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include <cstring>
+
 #include "util/constants.h"
 #include "util/log.h"
 
@@ -92,7 +94,10 @@ Status EpollLoop::ModifyFd(int fd, EventType events)
     int ret = epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, fd, &ev);
     if (ret < 0)
     {
-        LOG_ERROR("epoll_ctl MOD failed for fd=%d", fd);
+        if (errno != ENOENT)  // fd 已从 epoll 移除，静默忽略（流线程并发场景）
+        {
+            LOG_ERROR("epoll_ctl MOD failed for fd=%d: %s", fd, strerror(errno));
+        }
         return Status::NetworkError("epoll_ctl MOD failed");
     }
 
@@ -165,7 +170,7 @@ int EpollLoop::Wait(int timeout_ms, std::vector<EventResult>& results)
         results.push_back(result);
     }
 
-    LOG_DEBUG("EpollLoop::Wait: %d events", nfds);
+    LOG_TRACE("EpollLoop::Wait: %d events", nfds);
     return nfds;
 }
 
@@ -195,8 +200,11 @@ void EpollLoop::Run()
             auto it = callbacks_.find(result.fd);
             if (it != callbacks_.end())
             {
+                // 拷贝一份再调用：回调内部可能触发 RemoveFd -> callbacks_.erase，
+                // 直接调用 it->second 会在返回后访问已销毁的 std::function，造成 UAF
+                EventCallback cb = it->second;
                 EventType type = static_cast<EventType>(result.events);
-                it->second(result.fd, type, result);
+                cb(result.fd, type, result);
             }
         }
     }

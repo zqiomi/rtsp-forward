@@ -1,6 +1,8 @@
 #ifndef RTSP_FORWARD_RTSP_FORWARD_H_
 #define RTSP_FORWARD_RTSP_FORWARD_H_
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -11,6 +13,9 @@
 #include "net/listener.h"
 #include "rtp/rtp_packet.h"
 #include "util/status.h"
+
+// 前向声明公共 API 信息结构体（C 头文件定义）
+struct RtspForwardInfo;
 
 namespace rtsp_forward
 {
@@ -28,8 +33,11 @@ public:
      * @param port 监听端口
      * @param max_sessions 最大并发会话数
      * @param buffer_size 每个连接的缓冲区大小
+     * @param connection_timeout_sec 连接空闲超时（秒），0=不超时
+     * @param session_timeout_sec 会话空闲超时（秒），0=不超时
      */
-    RtspForward(const std::string& ip, int port, int max_sessions, size_t buffer_size);
+    RtspForward(const std::string& ip, int port, int max_sessions, size_t buffer_size, int connection_timeout_sec,
+                int session_timeout_sec);
     ~RtspForward();
 
     // 禁止拷贝和移动
@@ -109,15 +117,11 @@ public:
     }
 
     /**
-     * @brief 获取当前活跃会话数
+     * @brief 获取服务器信息（配置、状态、统计）
      *
-     * @return size_t 活跃会话数
+     * @param[out] info 输出参数，填充信息结构体
      */
-    size_t GetActiveSessions()
-    {
-        std::lock_guard<std::mutex> lock(sessions_mutex_);
-        return sessions_.size();
-    }
+    void GetInfo(RtspForwardInfo* info);
 
     /**
      * @brief 获取最大会话数限制
@@ -168,6 +172,9 @@ private:
     // 从连接读取数据并处理
     void ProcessConnectionData(int fd);
 
+    // 检查并清理超时会话（由 timerfd 周期触发）
+    void CheckTimeouts();
+
     bool running_;
     int port_;
     int max_sessions_;
@@ -179,6 +186,16 @@ private:
     Listener listener_;
     std::map<int, std::shared_ptr<RtspSession>> sessions_;
     std::mutex sessions_mutex_;  // 保护 sessions_ 容器的线程安全
+
+    // 超时配置
+    int connection_timeout_sec_;  // 连接阶段超时（秒），0=不超时
+    int session_timeout_sec_;     // 会话阶段超时（秒），0=不超时
+    int timer_fd_;                // timerfd，用于周期性超时检查
+
+    // 统计计数器（原子操作，保证多线程安全）
+    std::chrono::steady_clock::time_point start_time_;  // 服务器启动时间
+    std::atomic<uint64_t> total_connections_;           // 累计连接数
+    std::atomic<uint64_t> timed_out_sessions_;          // 因超时关闭的会话数
 };
 
 }  // namespace rtsp_forward

@@ -11,8 +11,13 @@ namespace rtsp_forward
 {
 
 RtspSession::RtspSession(RtspForward* server, Connection* conn)
-    : server_(server), conn_(conn), state_(RtspSessionState::kInit), session_id_(GenerateSessionId())
+    : server_(server),
+      conn_(conn),
+      state_(RtspSessionState::kInit),
+      session_id_(GenerateSessionId()),
+      last_activity_sec_(0)
 {
+    UpdateActivity();
     LOG_INFO("RtspSession created, session_id=%s", session_id_.c_str());
 }
 
@@ -29,6 +34,7 @@ RtspSession::~RtspSession()
 
 Status RtspSession::ProcessData(const std::string& data)
 {
+    UpdateActivity();
     RtspRequest request;
     Status status = parser_.Parse(data, request);
     if (!status.ok())
@@ -42,7 +48,41 @@ Status RtspSession::ProcessData(const std::string& data)
 
 Status RtspSession::ForwardRtp(const RtpPacket& packet)
 {
+    UpdateActivity();
     return rtp_forwarder_.ForwardTcp(conn_, packet);
+}
+
+void RtspSession::UpdateActivity()
+{
+    auto now = std::chrono::steady_clock::now();
+    last_activity_sec_.store(std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count(),
+                             std::memory_order_relaxed);
+}
+
+bool RtspSession::IsTimedOut(int connection_timeout_sec, int session_timeout_sec) const
+{
+    // 根据会话状态选择对应的超时阈值
+    int timeout_sec = 0;
+    if (state_ == RtspSessionState::kInit || state_ == RtspSessionState::kOptionsSent ||
+        state_ == RtspSessionState::kDescribeSent)
+    {
+        timeout_sec = connection_timeout_sec;
+    }
+    else
+    {
+        timeout_sec = session_timeout_sec;
+    }
+
+    if (timeout_sec <= 0)
+    {
+        return false;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    int64_t now_sec = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+    int64_t last_sec = last_activity_sec_.load(std::memory_order_relaxed);
+
+    return (now_sec - last_sec) >= timeout_sec;
 }
 
 void RtspSession::Close()
@@ -69,6 +109,9 @@ Status RtspSession::HandleRequest(const RtspRequest& request)
             return HandleTeardown(request);
         case RtspMethod::kPause:
             return HandlePause(request);
+        case RtspMethod::kGetParameter:
+        case RtspMethod::kSetParameter:
+            return HandleParameter(request);
         default:
             LOG_WARN("RtspSession::HandleRequest: unknown method=%d", static_cast<int>(request.method));
             std::string response = builder_.BuildErrorResponse(request.cseq, 405, "Method Not Allowed");
@@ -119,6 +162,16 @@ Status RtspSession::HandleSetup(const RtspRequest& request)
         transport_ = it->second;
     }
 
+    // 只支持 TCP interleaved 传输
+    // 若客户端请求 UDP（不含 TCP/interleaved），返回 461 让客户端重试 TCP
+    if (transport_.find("TCP") == std::string::npos && transport_.find("interleaved") == std::string::npos)
+    {
+        LOG_WARN("RtspSession::HandleSetup: unsupported transport='%s'", transport_.c_str());
+        std::string response = builder_.BuildErrorResponse(request.cseq, 461, "Unsupported Transport");
+        conn_->Send(response.data(), response.size());
+        return Status::InvalidArgument("unsupported transport");
+    }
+
     std::string response = builder_.BuildSetupResponse(request.cseq, session_id_);
     conn_->Send(response.data(), response.size());
     state_ = RtspSessionState::kSetupSent;
@@ -151,6 +204,15 @@ Status RtspSession::HandlePause(const RtspRequest& request)
     std::string response = builder_.BuildSimpleResponse(request.cseq, session_id_);
     conn_->Send(response.data(), response.size());
     state_ = RtspSessionState::kPaused;
+    return Status::Ok();
+}
+
+Status RtspSession::HandleParameter(const RtspRequest& request)
+{
+    LOG_DEBUG("RtspSession::HandleParameter: %s", RtspParser::MethodToString(request.method).c_str());
+    // GET_PARAMETER / SET_PARAMETER 用作心跳保活，直接返回 200 OK
+    std::string response = builder_.BuildSimpleResponse(request.cseq, session_id_);
+    conn_->Send(response.data(), response.size());
     return Status::Ok();
 }
 

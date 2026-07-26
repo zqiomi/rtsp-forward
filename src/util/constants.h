@@ -68,6 +68,17 @@ static const int kDefaultRtpChannel = 0;
 /** 默认 RTCP 通道号 */
 static const int kDefaultRtcpChannel = 1;
 
+// ===== 超时配置 =====
+
+/** 默认连接空闲超时（秒），适用于握手未完成的会话，0=不超时 */
+static const int kDefaultConnectionTimeoutSec = 30;
+
+/** 默认会话空闲超时（秒），适用于已建立的会话，0=不超时 */
+static const int kDefaultSessionTimeoutSec = 60;
+
+/** 超时检查间隔（秒），timerfd 触发周期 */
+static const int kTimeoutCheckIntervalSec = 1;
+
 }  // namespace rtsp_forward
 
 #endif  // RTSP_FORWARD_CONSTANTS_H_

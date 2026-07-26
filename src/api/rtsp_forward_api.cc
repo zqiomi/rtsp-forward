@@ -1,9 +1,11 @@
+#include <cstdio>
 #include <cstring>
 
 #include "core/rtsp_forward.h"
 #include "rtp/rtp_packet.h"
 #include "rtsp_forward.h"
 #include "util/constants.h"
+#include "version.h"  // CMake 生成，含版本号宏
 
 // 内部服务器结构体
 struct RtspForwardInternal
@@ -36,6 +38,8 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
     int max_sessions = rtsp_forward::kDefaultMaxSessions;
     size_t buffer_size = rtsp_forward::kDefaultBufferSize;
     const char* sdp_content = nullptr;
+    int connection_timeout_sec = rtsp_forward::kDefaultConnectionTimeoutSec;
+    int session_timeout_sec = rtsp_forward::kDefaultSessionTimeoutSec;
 
     // 如果提供了配置，使用配置值
     if (config != nullptr)
@@ -75,10 +79,26 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
         {
             sdp_content = config->sdp_content;
         }
+
+        // 超时配置：负数非法，0表示不超时
+        if (config->connection_timeout_sec < 0)
+        {
+            delete internal;
+            return RTSP_INVALID_ARGUMENT;
+        }
+        connection_timeout_sec = config->connection_timeout_sec;
+
+        if (config->session_timeout_sec < 0)
+        {
+            delete internal;
+            return RTSP_INVALID_ARGUMENT;
+        }
+        session_timeout_sec = config->session_timeout_sec;
     }
 
     // 创建内部实现
-    internal->impl = new rtsp_forward::RtspForward(ip, port, max_sessions, buffer_size);
+    internal->impl =
+        new rtsp_forward::RtspForward(ip, port, max_sessions, buffer_size, connection_timeout_sec, session_timeout_sec);
     if (!internal->impl)
     {
         delete internal;
@@ -281,7 +301,7 @@ int rtsp_forward_set_sdp(void* server, const char* sdp)
     return RTSP_OK;
 }
 
-int rtsp_forward_is_running(void* server, int* running)
+int rtsp_forward_get_info(void* server, RtspForwardInfo* info)
 {
     // 参数校验
     if (!server)
@@ -289,7 +309,7 @@ int rtsp_forward_is_running(void* server, int* running)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    if (!running)
+    if (!info)
     {
         return RTSP_INVALID_ARGUMENT;
     }
@@ -300,54 +320,23 @@ int rtsp_forward_is_running(void* server, int* running)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    *running = internal->impl->is_running() ? 1 : 0;
+    internal->impl->GetInfo(info);
     return RTSP_OK;
 }
 
-int rtsp_forward_get_port(void* server, int* port)
+const char* rtsp_forward_version_string(void)
 {
-    // 参数校验
-    if (!server)
-    {
-        return RTSP_INVALID_ARGUMENT;
-    }
-
-    if (!port)
-    {
-        return RTSP_INVALID_ARGUMENT;
-    }
-
-    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
-    if (!internal->impl)
-    {
-        return RTSP_INVALID_ARGUMENT;
-    }
-
-    *port = internal->impl->port();
-    return RTSP_OK;
+    return RTSP_FORWARD_VERSION_STRING;
 }
 
-int rtsp_forward_get_active_sessions(void* server, int* count)
+const char* rtsp_forward_build_info(void)
 {
-    // 参数校验
-    if (!server)
-    {
-        return RTSP_INVALID_ARGUMENT;
-    }
+    return "Built at " __DATE__ " " __TIME__;
+}
 
-    if (!count)
-    {
-        return RTSP_INVALID_ARGUMENT;
-    }
-
-    RtspForwardInternal* internal = static_cast<RtspForwardInternal*>(server);
-    if (!internal->impl)
-    {
-        return RTSP_INVALID_ARGUMENT;
-    }
-
-    *count = static_cast<int>(internal->impl->GetActiveSessions());
-    return RTSP_OK;
+void rtsp_forward_print_version(void)
+{
+    printf("rtsp_forward %s (%s %s)\n", RTSP_FORWARD_VERSION_STRING, __DATE__, __TIME__);
 }
 
 }  // extern "C"

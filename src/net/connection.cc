@@ -36,7 +36,8 @@ ssize_t Connection::Recv()
     }
 
     char* buf = read_buffer_->WritePtr();
-    size_t writable = read_buffer_->WritableSize();
+    // 必须用连续可写空间，否则 write_pos_ 靠近末尾时 recv 会越过 buffer 末尾越界写
+    size_t writable = read_buffer_->ContiguousWritableSize();
 
     ssize_t ret = ::recv(fd_, buf, writable, 0);
     if (ret < 0)
@@ -57,7 +58,7 @@ ssize_t Connection::Recv()
     }
 
     read_buffer_->Produce(ret);
-    LOG_DEBUG("Connection::Recv: fd=%d, received=%zd", fd_, ret);
+    LOG_TRACE("Connection::Recv: fd=%d, received=%zd", fd_, ret);
     return ret;
 }
 
@@ -79,10 +80,25 @@ ssize_t Connection::Send(const void* data, size_t len)
     if (write_buffer_->ReadableSize() == 0)
     {
         ssize_t ret = ::send(fd_, data, len, MSG_NOSIGNAL);
-        if (ret >= 0)
+        if (ret > 0)
         {
-            LOG_DEBUG("Connection::Send: fd=%d, sent=%zd", fd_, ret);
-            return ret;
+            size_t sent = static_cast<size_t>(ret);
+            if (sent < len)
+            {
+                // 部分发送：剩余数据写入缓冲区，避免丢失
+                Status st = write_buffer_->Write(static_cast<const char*>(data) + sent, len - sent);
+                if (!st.ok())
+                {
+                    LOG_WARN("Connection::Send: write buffer full on partial send, fd=%d", fd_);
+                    return static_cast<ssize_t>(sent);
+                }
+                LOG_TRACE("Connection::Send: fd=%d, sent=%zu, buffered=%zu", fd_, sent, len - sent);
+            }
+            else
+            {
+                LOG_TRACE("Connection::Send: fd=%d, sent=%zu", fd_, len);
+            }
+            return static_cast<ssize_t>(len);  // 报告全部成功（已发 + 已缓存）
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK)
         {
@@ -99,7 +115,7 @@ ssize_t Connection::Send(const void* data, size_t len)
         return -1;
     }
 
-    LOG_DEBUG("Connection::Send: fd=%d, buffered=%zu", fd_, len);
+    LOG_TRACE("Connection::Send: fd=%d, buffered=%zu", fd_, len);
     return len;
 }
 
@@ -194,16 +210,17 @@ bool Connection::IsWritable() const
 
 void Connection::Close()
 {
-    if (!closed_)
+    // 用 fd_ 做幂等守卫，而非 closed_
+    // closed_ 表示"对端关闭了连接"，不代表本地 fd 已 close
+    // 若用 closed_ 守卫，Recv 检测到对端关闭后 set closed_=true，
+    // 析构时 Close() 会跳过 ::close(fd_)，导致 fd 泄漏
+    if (fd_ >= 0)
     {
-        if (fd_ >= 0)
-        {
-            close(fd_);
-            LOG_DEBUG("Connection::Close: fd=%d", fd_);
-            fd_ = -1;
-        }
-        closed_ = true;
+        LOG_DEBUG("Connection::Close: fd=%d", fd_);
+        ::close(fd_);
+        fd_ = -1;
     }
+    closed_ = true;
 }
 
 }  // namespace rtsp_forward

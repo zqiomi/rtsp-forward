@@ -1,6 +1,7 @@
 #include "rtp_forwarder.h"
 
 #include <cstring>
+#include <vector>
 
 #include "util/constants.h"
 #include "util/log.h"
@@ -20,28 +21,21 @@ Status RtpForwarder::ForwardTcp(Connection* conn, const RtpPacket& packet)
         return Status::Closed("connection closed");
     }
 
-    // 构建 interleaved frame 头
-    // $ + channel(1 byte) + length(2 bytes, big-endian)
-    uint8_t header[4];
-    BuildInterleavedHeader(header, packet.stream_index, packet.len);
+    // 构建 interleaved frame: $ + channel(1) + length(2, big-endian) + RTP data
+    // 合并为单次写入，避免头和数据被分到不同 flush 周期导致帧错乱
+    size_t total_len = 4 + packet.len;
+    std::vector<uint8_t> frame(total_len);
+    BuildInterleavedHeader(frame.data(), packet.stream_index, packet.len);
+    memcpy(frame.data() + 4, packet.data, packet.len);
 
-    // 发送头部
-    ssize_t ret = conn->Send(header, sizeof(header));
+    ssize_t ret = conn->Send(frame.data(), total_len);
     if (ret < 0)
     {
-        LOG_ERROR("RtpForwarder::ForwardTcp: send header failed");
-        return Status::NetworkError("send header failed");
+        LOG_ERROR("RtpForwarder::ForwardTcp: send failed");
+        return Status::NetworkError("send failed");
     }
 
-    // 发送 RTP 包数据（不修改，直接透传）
-    ret = conn->Send(packet.data, packet.len);
-    if (ret < 0)
-    {
-        LOG_ERROR("RtpForwarder::ForwardTcp: send packet failed");
-        return Status::NetworkError("send packet failed");
-    }
-
-    LOG_DEBUG("RtpForwarder::ForwardTcp: channel=%d, length=%zu", packet.stream_index, packet.len);
+    LOG_TRACE("RtpForwarder::ForwardTcp: channel=%d, length=%zu", packet.stream_index, packet.len);
     return Status::Ok();
 }
 
