@@ -29,14 +29,14 @@ option(BUILD_DEMO "构建示例程序" ON)
 include(GNUInstallDirs)
 
 # 头文件路径
-include_directories(${CMAKE_SOURCE_DIR}/src)
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_BINARY_DIR})  # version.h 生成在此
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})  # version.h 生成在此
 
 # ===== 版本头文件（从 project(VERSION) 注入）=====
 configure_file(
-    "${CMAKE_SOURCE_DIR}/cmake/version.h.in"
-    "${CMAKE_BINARY_DIR}/version.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/version.h"
     @ONLY
 )
 
@@ -87,11 +87,11 @@ install(FILES include/rtsp_forward.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # ===== pkg-config 文件 =====
 configure_file(
-    "${CMAKE_SOURCE_DIR}/cmake/rtsp_forward.pc.in"
-    "${CMAKE_BINARY_DIR}/rtsp_forward.pc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/rtsp_forward.pc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/rtsp_forward.pc"
     @ONLY
 )
-install(FILES "${CMAKE_BINARY_DIR}/rtsp_forward.pc"
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/rtsp_forward.pc"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
 
