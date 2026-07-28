@@ -33,6 +33,12 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})  # version.h 生成在此
 
+# log_kit 依赖（优先查找已安装版本，支持子目录方式集成）
+if(NOT TARGET log_kit_shared AND NOT TARGET log_kit_static)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../log-kit
+                     ${CMAKE_CURRENT_BINARY_DIR}/log-kit)
+endif()
+
 # ===== 版本头文件（从 project(VERSION) 注入）=====
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
@@ -42,7 +48,6 @@ configure_file(
 
 # ===== 源文件列表 =====
 set(RTSP_FORWARD_SOURCES
-    src/util/log.cc
     src/buffer/ring_buffer.cc
     src/net/epoll_loop.cc
     src/net/socket.cc
@@ -61,9 +66,10 @@ if(BUILD_SHARED_LIBS)
     add_library(rtsp_forward_shared SHARED ${RTSP_FORWARD_SOURCES})
     set_target_properties(rtsp_forward_shared PROPERTIES
         OUTPUT_NAME rtsp_forward
-        VERSION ${PROJECT_VERSION}        # librtsp_forward.so.1.0.0
-        SOVERSION ${PROJECT_VERSION_MAJOR} # librtsp_forward.so.1
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
     )
+    target_link_libraries(rtsp_forward_shared PUBLIC log_kit_shared)
     install(TARGETS rtsp_forward_shared
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -74,9 +80,10 @@ endif()
 if(BUILD_STATIC_LIBS)
     add_library(rtsp_forward_static STATIC ${RTSP_FORWARD_SOURCES})
     set_target_properties(rtsp_forward_static PROPERTIES
-        OUTPUT_NAME rtsp_forward          # librtsp_forward.a
-        POSITION_INDEPENDENT_CODE ON     # 支持后续链接到动态库
+        OUTPUT_NAME rtsp_forward
+        POSITION_INDEPENDENT_CODE ON
     )
+    target_link_libraries(rtsp_forward_static PUBLIC log_kit_static)
     install(TARGETS rtsp_forward_static
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )

@@ -331,55 +331,13 @@ int rtsp_forward_set_log_level(RtspLogLevel level)
         return RTSP_INVALID_ARGUMENT;
     }
 
-    rtsp_forward::LogLevel internal_level;
-    switch (level)
-    {
-        case RTSP_LOG_TRACE:
-            internal_level = rtsp_forward::LogLevel::kTrace;
-            break;
-        case RTSP_LOG_DEBUG:
-            internal_level = rtsp_forward::LogLevel::kDebug;
-            break;
-        case RTSP_LOG_INFO:
-            internal_level = rtsp_forward::LogLevel::kInfo;
-            break;
-        case RTSP_LOG_WARN:
-            internal_level = rtsp_forward::LogLevel::kWarn;
-            break;
-        case RTSP_LOG_ERROR:
-            internal_level = rtsp_forward::LogLevel::kError;
-            break;
-        case RTSP_LOG_FATAL:
-            internal_level = rtsp_forward::LogLevel::kFatal;
-            break;
-        default:
-            return RTSP_INVALID_ARGUMENT;
-    }
-
-    rtsp_forward::Logger::SetLevel(internal_level);
+    ::rtsp_forward::SetLogLevel(static_cast<::log_kit::LogLevel>(level));
     return RTSP_OK;
 }
 
 RtspLogLevel rtsp_forward_get_log_level(void)
 {
-    rtsp_forward::LogLevel internal_level = rtsp_forward::Logger::GetLevel();
-    switch (internal_level)
-    {
-        case rtsp_forward::LogLevel::kTrace:
-            return RTSP_LOG_TRACE;
-        case rtsp_forward::LogLevel::kDebug:
-            return RTSP_LOG_DEBUG;
-        case rtsp_forward::LogLevel::kInfo:
-            return RTSP_LOG_INFO;
-        case rtsp_forward::LogLevel::kWarn:
-            return RTSP_LOG_WARN;
-        case rtsp_forward::LogLevel::kError:
-            return RTSP_LOG_ERROR;
-        case rtsp_forward::LogLevel::kFatal:
-            return RTSP_LOG_FATAL;
-        default:
-            return RTSP_LOG_DEBUG;
-    }
+    return static_cast<RtspLogLevel>(::rtsp_forward::GetLogLevel());
 }
 
 }  // extern "C"
