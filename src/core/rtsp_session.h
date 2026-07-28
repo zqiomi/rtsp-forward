@@ -2,11 +2,11 @@
 #define RTSP_FORWARD_RTSP_SESSION_H_
 
 #include <netinet/in.h>
+#include <sys/uio.h>
 
 #include <atomic>
 #include <cstdint>
 #include <string>
-#include <sys/uio.h>
 
 #include "net/connection.h"
 #include "net/fd_guard.h"
@@ -44,31 +44,76 @@ public:
 
     // ===== Connection 包装接口（供 RtspServer 调用）=====
 
-    int fd() const { return conn_.fd(); }
-    bool IsClosed() const { return conn_.IsClosed(); }
+    int fd() const
+    {
+        return conn_.fd();
+    }
+    bool IsClosed() const
+    {
+        return conn_.IsClosed();
+    }
 
     // 接收数据
-    ssize_t Recv() { return conn_.Recv(); }
+    ssize_t Recv()
+    {
+        return conn_.Recv();
+    }
 
     // 刷新写缓冲
-    ssize_t Flush() { return conn_.Flush(); }
+    ssize_t Flush()
+    {
+        return conn_.Flush();
+    }
 
     // 发送数据
-    ssize_t Send(const void* data, size_t len) { return conn_.Send(data, len); }
-    ssize_t SendV(const struct iovec* iov, int iovcnt, size_t total_len) { return conn_.SendV(iov, iovcnt, total_len); }
+    ssize_t Send(const void* data, size_t len)
+    {
+        return conn_.Send(data, len);
+    }
+    ssize_t SendV(const struct iovec* iov, int iovcnt, size_t total_len)
+    {
+        return conn_.SendV(iov, iovcnt, total_len);
+    }
 
     // 读缓冲区操作
-    const char* GetReadBuffer() const { return conn_.GetReadBuffer(); }
-    size_t GetReadBufferSize() const { return conn_.GetReadBufferSize(); }
-    void Consume(size_t len) { conn_.Consume(len); }
-    Status Peek(void* data, size_t size) const { return conn_.Peek(data, size); }
-    size_t FindSubstring(const char* substr, size_t substr_len) const { return conn_.FindSubstring(substr, substr_len); }
+    const char* GetReadBuffer() const
+    {
+        return conn_.GetReadBuffer();
+    }
+    size_t GetReadBufferSize() const
+    {
+        return conn_.GetReadBufferSize();
+    }
+    void Consume(size_t len)
+    {
+        conn_.Consume(len);
+    }
+    Status Peek(void* data, size_t size) const
+    {
+        return conn_.Peek(data, size);
+    }
+    size_t FindSubstring(const char* substr, size_t substr_len) const
+    {
+        return conn_.FindSubstring(substr, substr_len);
+    }
 
     // 背压控制
-    void RecordDrop() { conn_.RecordDrop(); }
-    void RecordSuccess() { conn_.RecordSuccess(); }
-    int GetConsecutiveDrops() { return conn_.GetConsecutiveDrops(); }
-    bool NeedFlush() { return conn_.NeedFlush(); }
+    void RecordDrop()
+    {
+        conn_.RecordDrop();
+    }
+    void RecordSuccess()
+    {
+        conn_.RecordSuccess();
+    }
+    int GetConsecutiveDrops()
+    {
+        return conn_.GetConsecutiveDrops();
+    }
+    bool NeedFlush()
+    {
+        return conn_.NeedFlush();
+    }
 
     // ===== 状态与会话信息 =====
 

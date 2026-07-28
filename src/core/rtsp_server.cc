@@ -455,16 +455,15 @@ void RtspServer::ProcessConnectionData(int fd)
         Status process_status = session->ProcessData(request_ptr, request_len);
         if (!process_status.ok())
         {
-            LOG_WARN("RtspServer::ProcessConnectionData: process failed, status=%s",
-                     process_status.ToString().c_str());
+            LOG_WARN("RtspServer::ProcessConnectionData: process failed, status=%s", process_status.ToString().c_str());
         }
 
         session->Consume(request_len);
 
         if (session->NeedFlush())
         {
-            event_loop_.ModifyFd(
-                fd, EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
+            event_loop_.ModifyFd(fd,
+                                 EventType(static_cast<int>(EventType::kRead) | static_cast<int>(EventType::kWrite)));
         }
     }
 }

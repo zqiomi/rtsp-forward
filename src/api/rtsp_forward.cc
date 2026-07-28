@@ -92,8 +92,8 @@ int rtsp_forward_create(void** server, const RtspForwardConfig* config)
     }
 
     // 创建内部实现
-    internal->impl =
-        new (std::nothrow) rtsp_forward::RtspServer(ip, port, max_sessions, buffer_size, connection_timeout_sec, session_timeout_sec);
+    internal->impl = new (std::nothrow)
+        rtsp_forward::RtspServer(ip, port, max_sessions, buffer_size, connection_timeout_sec, session_timeout_sec);
     if (!internal->impl)
     {
         delete internal;
@@ -317,6 +317,11 @@ int rtsp_forward_get_info(void* server, RtspForwardInfo* info)
 
     internal->impl->GetInfo(info);
     return RTSP_OK;
+}
+
+int rtsp_forward_get_log_module_id(void)
+{
+    return rtsp_forward::GetLogModuleId();
 }
 
 const char* rtsp_forward_version_string(void)

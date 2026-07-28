@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstring>
 #include <sstream>
-#include <vector>
 
 #include "util/constants.h"
 #include "util/log.h"
@@ -221,9 +220,8 @@ TransportInfo RtspParser::ParseTransport(const std::string& transport_str)
         }
     }
 
-    LOG_DEBUG("RtspParser::ParseTransport: is_udp=%d, is_tcp=%d, client_port=%d-%d, interleaved=%d-%d",
-              info.is_udp, info.is_tcp, info.client_rtp_port, info.client_rtcp_port,
-              info.interleaved_rtp, info.interleaved_rtcp);
+    LOG_DEBUG("RtspParser::ParseTransport: is_udp=%d, is_tcp=%d, client_port=%d-%d, interleaved=%d-%d", info.is_udp,
+              info.is_tcp, info.client_rtp_port, info.client_rtcp_port, info.interleaved_rtp, info.interleaved_rtcp);
 
     return info;
 }

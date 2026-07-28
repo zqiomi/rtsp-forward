@@ -13,7 +13,7 @@ rtsp_forward 是一个高性能的轻量级 RTSP 转发库，实现一个输入�
 - **双线程模型**: 主线程事件循环 + 码流输入线程
 - **统计信息**: 活跃/播放会话数、累计连接数、超时统计
 - **超时机制**: 连接阶段超时（30s）、会话阶段超时（60s）
-- **日志级别控制**: 基于 log_kit 的 TRACE/DEBUG/INFO/WARN/ERROR/FATAL，支持 Socket 远程配置。通过 `log_kit::LogSetLevel(module_id, level)` 控制
+- **日志级别控制**: 基于 log_kit 的 Logger 类封装，通过 `LogRegister("rtsp_forward")` 注册模块，支持 TRACE/DEBUG/INFO/WARN/ERROR/FATAL 级别控制和 Socket 远程配置
 - **高性能**: 环形缓冲区、零拷贝设计、避免不必要的内存分配
 
 ## 运行架构
@@ -61,7 +61,21 @@ flowchart LR
 
 ## 编译
 
+### 依赖
+
+- **log_kit**: 统一日志库（[github.com/zqiomi/log-kit](https://github.com/zqiomi/log-kit)）。CMake 会按以下顺序查找：
+  1. 当前项目的 `thirdpart/log-kit/` 目录（推荐，便于独立开发）
+  2. 上级 `thirdpart/log-kit/` 目录
+  3. 均不存在则报错
+
 ```bash
+# 方式1：克隆到当前项目 thirdpart 目录
+git clone git@github.com:zqiomi/log-kit.git thirdpart/log-kit
+
+# 方式2：克隆到上级 thirdpart 目录
+git clone git@github.com:zqiomi/log-kit.git ../log-kit
+
+# 编译
 mkdir -p build && cd build
 cmake ..
 make -j4
@@ -234,6 +248,8 @@ rtsp_forward/
 │   ├── protocol/                # RTSP协议层
 │   ├── rtp/                     # RTP层
 │   └── util/                    # 工具层
+│       └── log.h                # log_kit 适配器（自动注册模块）
+├── thirdpart/                   # 第三方依赖（log-kit 可放此处）
 ├── demo/                        # 测试程序
 ├── doc/                         # 文档
 ├── CMakeLists.txt               # 编译配置

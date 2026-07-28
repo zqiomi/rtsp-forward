@@ -44,8 +44,8 @@ public:
                                    int rtcp_channel = kDefaultRtcpChannel);
 
     // 构建 SETUP 响应（UDP模式）
-    std::string BuildSetupResponseUdp(int cseq, const std::string& session_id, int server_rtp_port, int server_rtcp_port,
-                                      int client_rtp_port, int client_rtcp_port);
+    std::string BuildSetupResponseUdp(int cseq, const std::string& session_id, int server_rtp_port,
+                                      int server_rtcp_port, int client_rtp_port, int client_rtcp_port);
 
     // 构建 PLAY 响应
     std::string BuildPlayResponse(int cseq, const std::string& session_id);

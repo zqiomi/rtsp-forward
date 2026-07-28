@@ -126,7 +126,7 @@ const char* sdp = "v=0\r\n"
 rtsp_forward_set_sdp(server, sdp);
 
 // Set log level (optional)
-rtsp_forward_set_log_level(RTSP_LOG_INFO);
+rtsp_forward_set_log_level(LOG_INFO);
 
 // Start server
 ret = rtsp_forward_start(server);

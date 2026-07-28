@@ -33,10 +33,20 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})  # version.h 生成在此
 
-# log_kit 依赖（优先查找已安装版本，支持子目录方式集成）
+# log_kit 依赖（优先查找当前路径的 thirdpart，其次上级 thirdpart）
 if(NOT TARGET log_kit_shared AND NOT TARGET log_kit_static)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../log-kit
-                     ${CMAKE_CURRENT_BINARY_DIR}/log-kit)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdpart/log-kit/CMakeLists.txt")
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/thirdpart/log-kit
+                         ${CMAKE_CURRENT_BINARY_DIR}/log-kit)
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../log-kit/CMakeLists.txt")
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../log-kit
+                         ${CMAKE_CURRENT_BINARY_DIR}/log-kit)
+    else()
+        message(FATAL_ERROR "log_kit not found. Please either:\n"
+                "  1. Clone log-kit into: ${CMAKE_CURRENT_SOURCE_DIR}/thirdpart/log-kit/\n"
+                "  2. Or ensure it exists at: ${CMAKE_CURRENT_SOURCE_DIR}/../log-kit/\n"
+                "  URL: https://github.com/zqiomi/log-kit.git")
+    endif()
 endif()
 
 # ===== 版本头文件（从 project(VERSION) 注入）=====

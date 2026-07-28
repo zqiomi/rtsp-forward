@@ -75,8 +75,8 @@ std::string RtspBuilder::BuildSetupResponse(int cseq, const std::string& session
     return BuildResponse(200, "OK", headers);
 }
 
-std::string RtspBuilder::BuildSetupResponseUdp(int cseq, const std::string& session_id, int server_rtp_port, int server_rtcp_port,
-                                                int client_rtp_port, int client_rtcp_port)
+std::string RtspBuilder::BuildSetupResponseUdp(int cseq, const std::string& session_id, int server_rtp_port,
+                                               int server_rtcp_port, int client_rtp_port, int client_rtcp_port)
 {
     std::map<std::string, std::string> headers;
     headers["CSeq"] = std::to_string(cseq);
