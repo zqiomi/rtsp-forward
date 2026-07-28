@@ -324,20 +324,4 @@ const char* rtsp_forward_version_string(void)
     return RTSP_FORWARD_VERSION_STRING " Built at " __DATE__ " " __TIME__;
 }
 
-int rtsp_forward_set_log_level(RtspLogLevel level)
-{
-    if (level < RTSP_LOG_TRACE || level > RTSP_LOG_FATAL)
-    {
-        return RTSP_INVALID_ARGUMENT;
-    }
-
-    ::rtsp_forward::SetLogLevel(static_cast<::log_kit::LogLevel>(level));
-    return RTSP_OK;
-}
-
-RtspLogLevel rtsp_forward_get_log_level(void)
-{
-    return static_cast<RtspLogLevel>(::rtsp_forward::GetLogLevel());
-}
-
 }  // extern "C"

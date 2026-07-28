@@ -13,7 +13,7 @@ rtsp_forward 是一个高性能的轻量级 RTSP 转发库，实现一个输入�
 - **双线程模型**: 主线程事件循环 + 码流输入线程
 - **统计信息**: 活跃/播放会话数、累计连接数、超时统计
 - **超时机制**: 连接阶段超时（30s）、会话阶段超时（60s）
-- **日志级别控制**: 基于 log_kit 的 TRACE/DEBUG/INFO/WARN/ERROR/FATAL，支持 Socket 远程配置
+- **日志级别控制**: 基于 log_kit 的 TRACE/DEBUG/INFO/WARN/ERROR/FATAL，支持 Socket 远程配置。通过 `log_kit::LogSetLevel(module_id, level)` 控制
 - **高性能**: 环形缓冲区、零拷贝设计、避免不必要的内存分配
 
 ## 运行架构
@@ -133,9 +133,6 @@ const char* sdp = "v=0\r\n"
                   "a=rtpmap:96 H264/90000\r\n";
 rtsp_forward_set_sdp(server, sdp);
 
-// 设置日志级别（可选）
-rtsp_forward_set_log_level(RTSP_LOG_INFO);
-
 // 启动服务器
 ret = rtsp_forward_start(server);
 if (ret != RTSP_OK) {
@@ -168,8 +165,6 @@ rtsp_forward_destroy(server);
 | `rtsp_forward_send_rtp` | 发送 RTP 包到所有播放会话 |
 | `rtsp_forward_set_sdp` | 设置 SDP 内容 |
 | `rtsp_forward_get_info` | 获取服务器信息（配置、状态、统计） |
-| `rtsp_forward_set_log_level` | 设置日志级别 |
-| `rtsp_forward_get_log_level` | 获取当前日志级别 |
 | `rtsp_forward_version_string` | 获取版本号字符串 |
 
 ## 配置参数

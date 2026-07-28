@@ -47,19 +47,6 @@ typedef enum RtspErrorCode
 } RtspErrorCode;
 
 /**
- * @brief 日志级别定义
- */
-typedef enum RtspLogLevel
-{
-    RTSP_LOG_TRACE = 0, /**< 详细跟踪信息 */
-    RTSP_LOG_DEBUG = 1, /**< 调试信息 */
-    RTSP_LOG_INFO = 2,  /**< 一般信息 */
-    RTSP_LOG_WARN = 3,  /**< 警告信息 */
-    RTSP_LOG_ERROR = 4, /**< 错误信息 */
-    RTSP_LOG_FATAL = 5, /**< 致命错误 */
-} RtspLogLevel;
-
-/**
  * @brief RTSP转发 配置结构体
  *
  * 用于创建服务器时传递配置参数。所有字段均为可选，未设置的字段将使用默认值。
@@ -225,23 +212,6 @@ int rtsp_forward_get_info(void* server, RtspForwardInfo* info);
  * @return 版本号字符串，如 "1.2.0"，静态存储，无需释放
  */
 const char* rtsp_forward_version_string(void);
-
-/**
- * @brief 设置全局日志级别
- *
- * @param[in] level 日志级别，RTSP_LOG_TRACE ~ RTSP_LOG_FATAL
- * @return RTSP_OK表示成功，其他值表示失败
- *
- * @note 此函数全局生效，影响所有服务器实例的日志输出
- */
-int rtsp_forward_set_log_level(RtspLogLevel level);
-
-/**
- * @brief 获取当前日志级别
- *
- * @return 当前日志级别
- */
-RtspLogLevel rtsp_forward_get_log_level(void);
 
 #ifdef __cplusplus
 }
